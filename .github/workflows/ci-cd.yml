@@ -40,3 +40,27 @@ jobs:
           git-of-theseus-analyze --help
           git-of-theseus-stack-plot --help
           git-of-theseus-survival-plot --help
+
+  test-nix:
+    runs-on: ubuntu-latest
+    name: Build and test via Nix
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Build package with nix
+        run: nix build
+
+      - name: Run tests in Nix dev shell
+        run: nix develop --command just test

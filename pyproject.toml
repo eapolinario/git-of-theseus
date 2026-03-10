@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "git-of-theseus"
+version = "0.3.4"
+description = "Plot stats on Git repositories"
+authors = [{ name = "Erik Bernhardsson", email = "mail@erikbern.com" }]
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+dependencies = [
+    "gitpython",
+    "matplotlib",
+    "numpy",
+    "pygments",
+    "python-dateutil",
+    "scipy",
+    "tqdm",
+    "wcmatch",
+]
+
+[project.scripts]
+git-of-theseus-analyze = "git_of_theseus.analyze:analyze_cmdline"
+git-of-theseus-survival-plot = "git_of_theseus:survival_plot_cmdline"
+git-of-theseus-stack-plot = "git_of_theseus:stack_plot_cmdline"
+git-of-theseus-line-plot = "git_of_theseus:line_plot_cmdline"
+
+[project.urls]
+Homepage = "https://github.com/erikbern/git-of-theseus"
