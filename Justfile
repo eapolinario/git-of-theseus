@@ -42,7 +42,7 @@ all REPO OUTDIR="got":
     just survival-plot {{ OUTDIR }}/survival.json survival.png
     just survival-plot-expfit {{ OUTDIR }}/survival.json survival_expfit.png
 
-# Run the CI test suite (clones git-of-theseus itself as the test repo)
+# Run the CI test suite against the current repository
 test:
     uv run git-of-theseus-analyze . --outdir got
     uv run git-of-theseus-stack-plot got/cohorts.json
