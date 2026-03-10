@@ -40,3 +40,23 @@ jobs:
           git-of-theseus-analyze --help
           git-of-theseus-stack-plot --help
           git-of-theseus-survival-plot --help
+
+  test-just:
+    runs-on: ubuntu-latest
+    name: Tests via just
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Run just test
+        run: just test

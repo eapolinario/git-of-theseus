@@ -16,7 +16,7 @@
           matplotlib
           numpy
           pygments
-          python-dateutil
+          ps."python-dateutil"
           scipy
           tqdm
           wcmatch
@@ -56,7 +56,7 @@
             matplotlib
             numpy
             pygments
-            python-dateutil
+            pkgs.python3Packages."python-dateutil"
             scipy
             tqdm
             wcmatch
