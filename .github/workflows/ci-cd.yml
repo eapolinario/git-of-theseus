@@ -44,6 +44,38 @@ jobs:
           git-of-theseus-stack-plot --help
           git-of-theseus-survival-plot --help
 
+  test-docker:
+    runs-on: ubuntu-latest
+    name: Build and test Docker image
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Build Docker image
+        run: docker build -t git-of-theseus .
+
+      - name: Test Docker image
+        run: |
+          docker run --rm \
+            -e MPLBACKEND=Agg \
+            -v "$PWD:/repo:ro" \
+            git-of-theseus \
+            bash -c "
+              git-of-theseus-analyze /repo --outdir /tmp/got &&
+              git-of-theseus-stack-plot /tmp/got/cohorts.json &&
+              git-of-theseus-stack-plot /tmp/got/cohorts.json --normalize &&
+              git-of-theseus-stack-plot /tmp/got/exts.json &&
+              git-of-theseus-stack-plot /tmp/got/authors.json &&
+              git-of-theseus-line-plot /tmp/got/authors.json &&
+              git-of-theseus-line-plot /tmp/got/dirs.json &&
+              git-of-theseus-survival-plot /tmp/got/survival.json --exp-fit &&
+              git-of-theseus-analyze --help &&
+              git-of-theseus-stack-plot --help &&
+              git-of-theseus-survival-plot --help
+            "
+
   test-nix:
     runs-on: ubuntu-latest
     name: Build and test via Nix
