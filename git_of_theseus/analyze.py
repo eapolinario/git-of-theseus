@@ -554,7 +554,12 @@ def analyze(
 def get_mailmap_author_name_email(repo, author_name, author_email):
     pre_mailmap_author_email = f"{author_name} <{author_email}>"
     mail_mapped_author_email: str = repo.git.check_mailmap(pre_mailmap_author_email)
-    mailmap_name, mailmap_email = mail_mapped_author_email[:-1].split(" <", maxsplit=1)
+    if " <" in mail_mapped_author_email:
+        mailmap_name, rest = mail_mapped_author_email.split(" <", maxsplit=1)
+        mailmap_email = rest.rstrip(">")
+    else:
+        mailmap_name = mail_mapped_author_email
+        mailmap_email = author_email
     return mailmap_name, mailmap_email
 
 
