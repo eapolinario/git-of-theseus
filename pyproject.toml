@@ -27,5 +27,11 @@ git-of-theseus-survival-plot = "git_of_theseus:survival_plot_cmdline"
 git-of-theseus-stack-plot = "git_of_theseus:stack_plot_cmdline"
 git-of-theseus-line-plot = "git_of_theseus:line_plot_cmdline"
 
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [project.urls]
 Homepage = "https://github.com/erikbern/git-of-theseus"

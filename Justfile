@@ -42,8 +42,12 @@ all REPO OUTDIR="got":
     just survival-plot {{ OUTDIR }}/survival.json survival.png
     just survival-plot-expfit {{ OUTDIR }}/survival.json survival_expfit.png
 
+# Run unit tests
+unit-test:
+    uv run --extra dev pytest
+
 # Run the CI test suite against the current repository
-test:
+test: unit-test
     uv run git-of-theseus-analyze . --outdir got
     uv run git-of-theseus-stack-plot got/cohorts.json
     uv run git-of-theseus-stack-plot got/cohorts.json --normalize
