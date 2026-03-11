@@ -34,11 +34,13 @@
             pkgs.uv
             pkgs.just
             pkgs.git
+            pkgs.stdenv.cc.cc.lib
           ];
 
           shellHook = ''
             echo "git-of-theseus dev shell"
             echo "Run 'just' to see available commands."
+            export LD_LIBRARY_PATH=${pkgs.stdenv.cc.cc.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
           '';
         };
 
