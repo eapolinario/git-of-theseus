@@ -12,3 +12,4 @@ venv/
 .uv/
 got/
 *.png
+!pics/*.png
