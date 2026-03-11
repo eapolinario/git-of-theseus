@@ -614,7 +614,7 @@ def analyze_cmdline():
     )
     parser.add_argument(
         "--procs",
-        default=2,
+        default=os.cpu_count(),
         type=int,
         help="Number of processes to use. There is a point of diminishing returns, and RAM may become an issue on large repos (default: %(default)s)",
     )
