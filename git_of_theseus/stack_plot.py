@@ -31,7 +31,7 @@ def stack_plot(
     y = numpy.array(data["y"])
     if y.shape[0] > max_n:
         js = sorted(range(len(data["labels"])), key=lambda j: max(y[j]), reverse=True)
-        other_sum = numpy.sum(y[j] for j in js[max_n:])
+        other_sum = numpy.sum([y[j] for j in js[max_n:]], axis=0)
         top_js = sorted(js[:max_n], key=lambda j: data["labels"][j])
         y = numpy.array([y[j] for j in top_js] + [other_sum])
         labels = [data["labels"][j] for j in top_js] + ["other"]

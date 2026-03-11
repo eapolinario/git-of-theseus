@@ -270,10 +270,16 @@ def analyze(
     try:
         repo.git.show_ref("refs/heads/{:s}".format(branch), verify=True)
     except git.exc.GitCommandError:
-        default_branch = repo.active_branch.name
+        try:
+            default_branch = repo.active_branch.name
+            fallback_desc = "default branch '{:s}'".format(default_branch)
+        except TypeError:
+            # HEAD is detached (e.g., PR checkout in CI); fall back to HEAD commit
+            default_branch = repo.head.commit.hexsha
+            fallback_desc = "HEAD commit '{:s}'".format(default_branch)
         warnings.warn(
-            "Requested branch: '{:s}' does not exist. Falling back to default branch: '{:s}'".format(
-                branch, default_branch
+            "Requested branch: '{:s}' does not exist. Falling back to {:s}".format(
+                branch, fallback_desc
             )
         )
 

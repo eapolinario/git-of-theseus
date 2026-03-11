@@ -1,6 +1,10 @@
 name: Build and run
 
-on: [push]
+on:
+  push:
+    branches:
+      - master
+  pull_request:
 
 env:
   DISPLAY: ":99.0"
@@ -10,11 +14,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11"]
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
     name: Tests on Python ${{ matrix.python-version }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Install Python
         uses: actions/setup-python@v4
@@ -22,14 +28,11 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install package
-        run: | 
-          pip install .
-          pip install scipy
+        run: pip install .
 
       - name: Run tests
         run: |
-          git clone https://github.com/erikbern/git-of-theseus
-          git-of-theseus-analyze git-of-theseus --outdir got
+          git-of-theseus-analyze . --outdir got
           git-of-theseus-stack-plot got/cohorts.json
           git-of-theseus-stack-plot got/cohorts.json --normalize
           git-of-theseus-stack-plot got/exts.json

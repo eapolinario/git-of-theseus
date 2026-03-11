@@ -83,7 +83,7 @@ def survival_plot(
             P = 1.0
             for t in sorted(deltas.keys()):
                 delta_k, delta_n = deltas[t]
-                pred = total_n * math.exp(-k * t / YEAR)
+                pred = total_n * numpy.exp(-k * t / YEAR)
                 loss += (total_n * P - pred) ** 2
                 P *= 1 + delta_k / total_n
                 total_k += delta_k
@@ -98,7 +98,7 @@ def survival_plot(
             sys.exit("Scipy is a required dependency when using the --exp-fit flag")
 
         print("fitting exponential function")
-        k = scipy.optimize.fmin(fit, 0.5, maxiter=50)[0]
+        k = float(scipy.optimize.fmin(fit, 0.5, maxiter=50)[0])
         ts = numpy.linspace(0, years, 1000)
         ys = [100.0 * math.exp(-k * t) for t in ts]
         pyplot.plot(
