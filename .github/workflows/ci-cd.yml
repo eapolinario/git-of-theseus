@@ -63,6 +63,7 @@ jobs:
             -v "$PWD:/repo:ro" \
             git-of-theseus \
             bash -c "
+              git config --global --add safe.directory /repo &&
               git-of-theseus-analyze /repo --outdir /tmp/got &&
               git-of-theseus-stack-plot /tmp/got/cohorts.json &&
               git-of-theseus-stack-plot /tmp/got/cohorts.json --normalize &&
