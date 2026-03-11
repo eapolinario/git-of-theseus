@@ -1,21 +1,20 @@
-FROM python:3.12-slim
+FROM nixos/nix:latest
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:0.10.9 /uv /uvx /usr/local/bin/
-
-# Install system dependencies (git is required by gitpython)
-RUN apt-get update -q && \
-    apt-get install -yqq --no-install-recommends git && \
-    rm -rf /var/lib/apt/lists/*
+# Enable flakes and disable sandbox (Nix sandbox is incompatible with Docker)
+RUN echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf && \
+    echo "sandbox = false" >> /etc/nix/nix.conf
 
 WORKDIR /app
 
-# Copy project files
-COPY pyproject.toml README.md LICENSE ./
-COPY git_of_theseus/ ./git_of_theseus/
-COPY container/run.sh /run.sh
+# Copy all project files
+COPY . .
 
-# Install the package
-RUN uv pip install --system --no-cache .
+# Build the package using the nix flake
+RUN nix build .#default --out-link /result
+
+# Make the built binaries available on PATH
+ENV PATH="/result/bin:${PATH}"
+
+COPY container/run.sh /run.sh
 
 CMD ["git-of-theseus-analyze", "--help"]
