@@ -16,7 +16,6 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, TimeZone, Utc};
@@ -412,7 +411,7 @@ struct TreeEntry {
 }
 
 fn collect_blob_entries(
-    repo: &Repository,
+    _repo: &Repository,
     tree: &git2::Tree<'_>,
     filter: &PathFilter,
 ) -> Result<Vec<TreeEntry>> {
@@ -438,7 +437,6 @@ fn collect_blob_entries(
         }
         git2::TreeWalkResult::Ok
     })?;
-    let _ = repo; // borrow check appeasement; tree already borrows repo
     Ok(out)
 }
 
@@ -491,7 +489,6 @@ fn blame_files(
     if entries.is_empty() {
         return Ok(Vec::new());
     }
-    let bar_inc = AtomicUsize::new(0);
     let results: Vec<Result<(String, FileHistogram)>> = pool.install(|| {
         entries
             .par_iter()
@@ -505,14 +502,12 @@ fn blame_files(
                         opts.ignore_whitespace(true);
                     }
                     let hist = blame_one(repo, entry, &mut opts, commit2cohort);
-                    bar_inc.fetch_add(1, Ordering::Relaxed);
                     progress.inc(1);
                     Ok((entry.path.clone(), hist.unwrap_or_default()))
                 },
             )
             .collect()
     });
-    let _ = bar_inc;
     let mut out = Vec::with_capacity(results.len());
     for r in results {
         out.push(r?);
