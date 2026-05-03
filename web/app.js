@@ -388,9 +388,12 @@ async function runAll() {
 
     status(`Cloning ${repoUrl}…`);
     setProgress(0, 0);
+    // NB: do *not* pass `depth: 0` — in isomorphic-git that means "fetch zero
+    // commits" (which then fails checkout with CommitNotFetchedError). Omit
+    // `depth` entirely for a full clone.
     await git.clone({
       fs, http, dir, url: repoUrl,
-      ref: branch, singleBranch: true, depth: 0,
+      ref: branch, singleBranch: true,
       corsProxy: CORS_PROXY,
       onProgress: (e) => {
         if (e.total) setProgress(e.loaded, e.total);
