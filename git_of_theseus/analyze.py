@@ -18,16 +18,21 @@ import argparse
 import datetime
 import functools
 import json
-import multiprocessing
 import os
-import signal
 import warnings
 from pathlib import Path
+from typing import Callable, Optional
 
-import git
-import pygments.lexers
-from tqdm import tqdm
 from wcmatch import fnmatch
+
+from .git_backend import (
+    BlameLine,
+    CommitInfo,
+    EntryInfo,
+    GitBackend,
+    GitPythonBackend,
+    utc_strftime,
+)
 
 # Some filetypes in Pygments are not necessarily computer code, but configuration/documentation. Let's not include those.
 IGNORE_PYGMENTS_FILETYPES = [
@@ -47,22 +52,20 @@ IGNORE_PYGMENTS_FILETYPES = [
     "*.yml",
 ]
 
-default_filetypes = set()
-for _, _, filetypes, _ in pygments.lexers.get_all_lexers():
-    default_filetypes.update(filetypes)
-default_filetypes.difference_update(IGNORE_PYGMENTS_FILETYPES)
 
+@functools.lru_cache(maxsize=1)
+def _default_filetypes():
+    """Lazily compute the default file-type whitelist.
 
-class MiniEntry:
-    def __init__(self, entry):
-        self.path = entry.path
-        self.binsha = entry.binsha
-
-
-class MiniCommit:
-    def __init__(self, commit):
-        self.hexsha = commit.hexsha
-        self.committed_date = commit.committed_date
+    Importing pygments at module load time slows interpreter startup and is
+    only needed when ``analyze()`` runs.
+    """
+    import pygments.lexers
+    fts = set()
+    for _, _, filetypes, _ in pygments.lexers.get_all_lexers():
+        fts.update(filetypes)
+    fts.difference_update(IGNORE_PYGMENTS_FILETYPES)
+    return fts
 
 
 def get_top_dir(path):
@@ -71,76 +74,197 @@ def get_top_dir(path):
     )  # Git/GitPython on Windows also returns paths with '/'s
 
 
-class BlameProc(multiprocessing.Process):
-    def __init__(
-        self, repo_dir, q, ret_q, run_flag, blame_kwargs, commit2cohort, use_mailmap
-    ):
-        super().__init__(daemon=True)
-        self.repo: git.Repo = git.Repo(repo_dir)
-        self.q: multiprocessing.Queue = q
-        self.ret_q: multiprocessing.Queue = ret_q
-        self.run_flag: multiprocessing.Event = run_flag
-        self.blame_kwargs = dict(blame_kwargs)
-        self.commit2cohort = commit2cohort  # On Unix systems if process is started via the `fork` method, could make this a copy-on-write variable to save RAM
-        self.use_mailmap = use_mailmap
+# ---------------------------------------------------------------------------
+# Progress reporting
+# ---------------------------------------------------------------------------
 
-    # Get Blame data for a `file` at `commit`
-    def get_file_histogram(self, path, commit):
-        h = {}
-        try:
-            for old_commit, lines in self.repo.blame(commit, path, **self.blame_kwargs):
-                cohort = self.commit2cohort.get(old_commit.binsha, "MISSING")
-                _, ext = os.path.splitext(path)
-                if self.use_mailmap:
-                    author_name, author_email = get_mailmap_author_name_email(
-                        self.repo, old_commit.author.name, old_commit.author.email
+class _NullBar:
+    """Drop-in replacement for tqdm when no progress reporting is wanted."""
+
+    def __init__(self, total=None, desc="", **_kwargs):
+        self.total = total
+        self.n = 0
+        self.desc = desc
+
+    def update(self, n=1):
+        self.n += n
+
+    def set_description(self, desc, *_args, **_kwargs):
+        self.desc = desc
+
+    def __iter__(self):
+        return iter(())
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class _CallbackBar:
+    """Progress bar that forwards updates to a user-provided callback.
+
+    The callback receives a dict ``{"phase", "n", "total", "desc"}``.
+    """
+
+    def __init__(self, callback, phase, total=None, desc="", **_kwargs):
+        self._cb = callback
+        self._phase = phase
+        self.total = total
+        self.n = 0
+        self.desc = desc
+        self._emit()
+
+    def _emit(self):
+        self._cb({
+            "phase": self._phase,
+            "n": self.n,
+            "total": self.total,
+            "desc": self.desc,
+        })
+
+    def update(self, n=1):
+        self.n += n
+        self._emit()
+
+    def set_description(self, desc, *_args, **_kwargs):
+        self.desc = desc
+        self._emit()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _make_bar_factory(progress: Optional[Callable], quiet: bool):
+    """Return a ``bar(total=..., desc=..., phase=...)`` factory.
+
+    Priority:
+    1. user-supplied ``progress`` callback,
+    2. tqdm if available and not ``quiet``,
+    3. silent null bar.
+    """
+    if progress is not None:
+        def factory(total=None, desc="", phase="", **_kwargs):
+            return _CallbackBar(progress, phase=phase, total=total, desc=desc)
+        return factory
+
+    if quiet:
+        def factory(total=None, desc="", phase="", **_kwargs):
+            return _NullBar(total=total, desc=desc)
+        return factory
+
+    try:
+        from tqdm import tqdm
+    except ImportError:
+        def factory(total=None, desc="", phase="", **_kwargs):
+            return _NullBar(total=total, desc=desc)
+        return factory
+
+    common = {"smoothing": 0.025, "dynamic_ncols": True}
+
+    def factory(total=None, desc="", phase="", iterable=None, **kwargs):
+        opts = dict(common)
+        opts.update(kwargs)
+        if iterable is not None:
+            return tqdm(iterable, total=total, desc=desc, **opts)
+        return tqdm(total=total, desc=desc, **opts)
+
+    return factory
+
+
+# ---------------------------------------------------------------------------
+# Multiprocess blame driver (used only with the GitPython backend; relies on
+# repo_dir + ``git`` being available, which is not the case in WASM).
+# ---------------------------------------------------------------------------
+
+class _BlameProc:
+    """Worker process that blames files."""
+
+    def __init__(self, repo_dir, q, ret_q, run_flag, blame_kwargs,
+                 commit2cohort, use_mailmap):
+        import multiprocessing
+        import signal
+
+        class _Proc(multiprocessing.Process):
+            def __init__(inner):
+                super().__init__(daemon=True)
+                inner.repo_dir = repo_dir
+                inner.q = q
+                inner.ret_q = ret_q
+                inner.run_flag = run_flag
+                inner.blame_kwargs = dict(blame_kwargs)
+                inner.commit2cohort = commit2cohort
+                inner.use_mailmap = use_mailmap
+
+            def run(inner):  # pragma: no cover - subprocess
+                signal.signal(signal.SIGINT, signal.SIG_IGN)
+                backend = GitPythonBackend(inner.repo_dir)
+                while inner.run_flag.wait():
+                    entry, commit_sha = inner.q.get()
+                    if not commit_sha:
+                        return
+                    inner.ret_q.put(
+                        (entry, _file_histogram(
+                            backend, entry, commit_sha,
+                            inner.commit2cohort, inner.use_mailmap,
+                            ignore_whitespace=inner.blame_kwargs.get("w", False),
+                        ))
                     )
-                else:
-                    author_name, author_email = (
-                        old_commit.author.name,
-                        old_commit.author.email,
-                    )
-                keys = [
-                    ("cohort", cohort),
-                    ("ext", ext),
-                    ("author", author_name),
-                    ("dir", get_top_dir(path)),
-                    ("domain", author_email.split("@")[-1]),
-                ]
 
-                if old_commit.binsha in self.commit2cohort:
-                    keys.append(("sha", old_commit.hexsha))
+        self._proc = _Proc()
+        self.name = self._proc.name
 
-                for key in keys:
-                    h[key] = h.get(key, 0) + len(lines)
-        except:
-            pass
-        return h
+    def start(self):
+        self._proc.start()
+        self.name = self._proc.name
 
-    def run(self):
-        signal.signal(signal.SIGINT, signal.SIG_IGN)
-        try:
-            while self.run_flag.wait():
-                entry, commit = self.q.get()
-                if not commit:
-                    return
-                self.ret_q.put((entry, self.get_file_histogram(entry, commit)))
-        except:
-            raise
+    def is_alive(self):
+        return self._proc.is_alive()
+
+    def join(self):
+        return self._proc.join()
 
 
-class BlameDriver:
-    def __init__(
-        self,
-        repo_dir,
-        proc_count,
-        last_file_y,
-        cur_y,
-        blame_kwargs,
-        commit2cohort,
-        use_mailmap,
-        quiet,
-    ):
+def _file_histogram(backend: GitBackend, path: str, commit_sha: str,
+                    commit2cohort, use_mailmap, ignore_whitespace=False):
+    """Build the per-file histogram of attribution counts.
+
+    Returns a dict keyed by ``(category, value)`` tuples.
+    """
+    h = {}
+    for hunk in backend.blame(commit_sha, path, ignore_whitespace=ignore_whitespace):
+        cohort = commit2cohort.get(hunk.commit_binsha, "MISSING")
+        _, ext = os.path.splitext(path)
+        if use_mailmap:
+            author_name, author_email = backend.check_mailmap(
+                hunk.author_name, hunk.author_email,
+            )
+        else:
+            author_name, author_email = hunk.author_name, hunk.author_email
+        keys = [
+            ("cohort", cohort),
+            ("ext", ext),
+            ("author", author_name),
+            ("dir", get_top_dir(path)),
+            ("domain", author_email.split("@")[-1]),
+        ]
+        if hunk.commit_binsha in commit2cohort:
+            keys.append(("sha", hunk.commit_hexsha))
+        for key in keys:
+            h[key] = h.get(key, 0) + hunk.num_lines
+    return h
+
+
+class _BlameDriver:
+    """Multi-process driver – original CLI behaviour."""
+
+    def __init__(self, repo_dir, proc_count, last_file_y, cur_y, blame_kwargs,
+                 commit2cohort, use_mailmap, quiet):
+        import multiprocessing
         self.repo_dir = repo_dir
         self.proc_count = proc_count
         self.q = multiprocessing.Queue()
@@ -166,7 +290,7 @@ class BlameDriver:
             print("\n\nStarting up processes: ", end="")
         for i in range(n):
             self.proc_pool.append(
-                BlameProc(
+                _BlameProc(
                     self.repo_dir,
                     self.q,
                     self.ret_q,
@@ -184,48 +308,40 @@ class BlameDriver:
                 )
 
     def _despawn_process(self, n):
-        for i in range(n):
+        for _ in range(n):
             self.q.put((None, None))
-
         print("\n")
         while True:
             print("\rShutting down processes: ", end="")
-            killed_processes = 0
+            killed = 0
             for idx, proc in enumerate(self.proc_pool):
-                if proc.is_alive():
-                    continue
-                else:
+                if not proc.is_alive():
                     print(
-                        ("" if killed_processes == 0 else ", ") + proc.name,
-                        end="\n" if killed_processes == n - 1 else "",
+                        ("" if killed == 0 else ", ") + proc.name,
+                        end="\n" if killed == n - 1 else "",
                     )
-                    killed_processes += 1
-            if killed_processes >= n:
+                    killed += 1
+            if killed >= n:
                 for proc in self.proc_pool:
                     if not proc.is_alive():
                         proc.join()
-                self.proc_pool = [proc for proc in self.proc_pool if proc.is_alive()]
+                self.proc_pool = [p for p in self.proc_pool if p.is_alive()]
                 return
 
     def fetch(self, commit, check_entries, bar):
         self.spawn_process()
-        processed_entries = 0
-        total_entries = len(check_entries)
-
+        processed = 0
+        total = len(check_entries)
         for entry in check_entries:
             self.q.put((entry.path, commit.hexsha))
-
-        while processed_entries < total_entries:
+        while processed < total:
             path, file_y = self.ret_q.get()
-
-            for key_tuple, file_locs in file_y.items():
-                self.cur_y[key_tuple] = self.cur_y.get(key_tuple, 0) + file_locs
+            for key_tuple, locs in file_y.items():
+                self.cur_y[key_tuple] = self.cur_y.get(key_tuple, 0) + locs
             self.last_file_y[path] = file_y
-
-            processed_entries += 1
+            processed += 1
             self.run_flag.wait()
             bar.update()
-
         return self.cur_y
 
     def pause(self):
@@ -235,12 +351,71 @@ class BlameDriver:
         self.run_flag.set()
 
 
+class _SerialBlameDriver:
+    """Single-process blame driver. Used in WASM (no multiprocessing)."""
+
+    def __init__(self, backend, last_file_y, cur_y, blame_kwargs,
+                 commit2cohort, use_mailmap):
+        self.backend = backend
+        self.last_file_y = last_file_y
+        self.cur_y = cur_y
+        self.blame_kwargs = blame_kwargs
+        self.commit2cohort = commit2cohort
+        self.use_mailmap = use_mailmap
+        # API compatibility with _BlameDriver:
+        self.proc_pool = []
+
+    def fetch(self, commit, check_entries, bar):
+        ignore_ws = bool(self.blame_kwargs.get("w", False))
+        for entry in check_entries:
+            file_y = _file_histogram(
+                self.backend, entry.path, commit.hexsha,
+                self.commit2cohort, self.use_mailmap,
+                ignore_whitespace=ignore_ws,
+            )
+            for key_tuple, locs in file_y.items():
+                self.cur_y[key_tuple] = self.cur_y.get(key_tuple, 0) + locs
+            self.last_file_y[entry.path] = file_y
+            bar.update()
+        return self.cur_y
+
+    def pause(self):  # pragma: no cover - serial driver has no pausing
+        pass
+
+    def resume(self):  # pragma: no cover
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Backwards-compat re-exports (for tests / external callers).
+# ---------------------------------------------------------------------------
+
+@functools.lru_cache(maxsize=None)
+def get_mailmap_author_name_email(repo, author_name, author_email):
+    """Legacy helper kept for backwards compatibility with existing callers
+    and tests. New code should use :meth:`GitBackend.check_mailmap`.
+    """
+    pre_mailmap_author_email = f"{author_name} <{author_email}>"
+    mail_mapped_author_email: str = repo.git.check_mailmap(pre_mailmap_author_email)
+    if " <" in mail_mapped_author_email:
+        mailmap_name, rest = mail_mapped_author_email.split(" <", maxsplit=1)
+        mailmap_email = rest.rstrip(">")
+    else:
+        mailmap_name = mail_mapped_author_email
+        mailmap_email = author_email
+    return mailmap_name, mailmap_email
+
+
+# ---------------------------------------------------------------------------
+# Main analyze() entry point.
+# ---------------------------------------------------------------------------
+
 def analyze(
-    repo_dir,
+    repo_dir=None,
     cohortfm="%Y",
     interval=7 * 24 * 60 * 60,
-    ignore=[],
-    only=[],
+    ignore=None,
+    only=None,
     outdir=".",
     branch="master",
     all_filetypes=False,
@@ -248,106 +423,141 @@ def analyze(
     procs=2,
     quiet=False,
     opt=False,
+    *,
+    backend: Optional[GitBackend] = None,
+    progress: Optional[Callable] = None,
+    write_outputs: bool = True,
 ):
-    use_mailmap = (Path(repo_dir) / ".mailmap").exists()
-    repo = git.Repo(repo_dir)
-    blame_kwargs = {}
-    if ignore_whitespace:
-        blame_kwargs["w"] = True
-    master_commits = []  # only stores a subset
-    commit2cohort = {}
-    curve_key_tuples = set()  # Keys of each curve that will be tracked
-    tqdm_args = {
-        "smoothing": 0.025,  # Exponential smoothing is still rather jumpy, a tiny number will do
-        "disable": quiet,
-        "dynamic_ncols": True,
-    }
+    """Run the cohort/author/etc. analysis on a repository.
 
-    if not os.path.exists(outdir):
+    Parameters
+    ----------
+    repo_dir, cohortfm, interval, ignore, only, outdir, branch, all_filetypes,
+    ignore_whitespace, procs, quiet, opt:
+        Same meaning as on the command line. ``procs <= 0`` switches to a
+        serial in-process blame driver (required for WASM/Pyodide).
+    backend:
+        Optional pre-built :class:`GitBackend`. When omitted, a
+        :class:`GitPythonBackend` is created from ``repo_dir``.
+    progress:
+        Optional callback ``progress(event)`` where ``event`` is a dict with
+        ``phase``, ``n``, ``total``, ``desc``. When provided, ``tqdm`` is
+        bypassed entirely – useful for browser UIs.
+    write_outputs:
+        When ``True`` (default), write ``cohorts.json``/``authors.json``/etc.
+        to ``outdir``. When ``False``, return the structured results instead
+        of writing files.
+
+    Returns
+    -------
+    dict
+        ``{"cohorts": ..., "authors": ..., "exts": ..., "dirs": ...,
+        "domains": ..., "survival": ...}`` when ``write_outputs`` is False;
+        otherwise ``None`` for backwards compatibility.
+    """
+    ignore = list(ignore) if ignore else []
+    only = list(only) if only else []
+
+    if backend is None:
+        if repo_dir is None:
+            raise ValueError("Either `repo_dir` or `backend` must be provided")
+        backend = GitPythonBackend(repo_dir)
+
+    use_mailmap = backend.has_mailmap()
+    blame_kwargs = {"w": True} if ignore_whitespace else {}
+
+    bar_factory = _make_bar_factory(progress, quiet)
+
+    if outdir and write_outputs and not os.path.exists(outdir):
         os.makedirs(outdir)
 
-    # Check if specified branch exists
-    try:
-        repo.git.show_ref("refs/heads/{:s}".format(branch), verify=True)
-    except git.exc.GitCommandError:
-        try:
-            default_branch = repo.active_branch.name
-            fallback_desc = "default branch '{:s}'".format(default_branch)
-        except TypeError:
-            # HEAD is detached (e.g., PR checkout in CI); fall back to HEAD commit
-            default_branch = repo.head.commit.hexsha
-            fallback_desc = "HEAD commit '{:s}'".format(default_branch)
+    # Resolve branch -------------------------------------------------------
+    resolved_branch = backend.resolve_branch(branch)
+    if resolved_branch is None:
+        active = backend.active_branch_name()
+        if active is None:
+            active = backend.head_commit_hexsha()
+            fallback_desc = "HEAD commit '{:s}'".format(active)
+        else:
+            fallback_desc = "default branch '{:s}'".format(active)
         warnings.warn(
             "Requested branch: '{:s}' does not exist. Falling back to {:s}".format(
-                branch, fallback_desc
+                branch, fallback_desc,
             )
         )
+        branch = active
 
-        branch = default_branch
-
-    if not quiet and repo.git.version_info < (2, 31, 0):
-        print(
-            "Old Git version {:d}.{:d}.{:d} detected. There are optimizations available in version 2.31.0 which speed up performance".format(
-                *repo.git.version_info
-            )
-        )
-
+    # Optional commit-graph optimisation (ignored by non-GitPython backends).
     if opt:
-        if not quiet:
+        if not quiet and progress is None:
             print(
-                "Generating git commit-graph... If you wish, this file is deletable later at .git/objects/info"
+                "Generating git commit-graph... If you wish, this file is "
+                "deletable later at .git/objects/info"
             )
-        repo.git.execute(
-            ["git", "commit-graph", "write", "--changed-paths"]
-        )  # repo.git.commit_graph('write --changed-paths') doesn't work for some reason
+        try:
+            backend.write_commit_graph()
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # Phase 1: enumerate all commits, build cohort + author key sets.
+    # ------------------------------------------------------------------
+    master_commits = []
+    commit2cohort = {}
+    curve_key_tuples = set()
 
     desc = "{:<55s}".format("Listing all commits")
-    for commit in tqdm(
-        repo.iter_commits(branch), desc=desc, unit=" Commits", **tqdm_args
-    ):
-        cohort = datetime.datetime.utcfromtimestamp(commit.committed_date).strftime(
-            cohortfm
-        )
+    bar = bar_factory(desc=desc, phase="list_commits")
+    for commit in backend.iter_commits(branch):
+        cohort = utc_strftime(commit.committed_date, cohortfm)
         commit2cohort[commit.binsha] = cohort
         curve_key_tuples.add(("cohort", cohort))
         if use_mailmap:
-            author_name, author_email = get_mailmap_author_name_email(
-                repo, commit.author.name, commit.author.email
+            author_name, author_email = backend.check_mailmap(
+                commit.author_name, commit.author_email,
             )
         else:
-            author_name, author_email = commit.author.name, commit.author.email
+            author_name, author_email = commit.author_name, commit.author_email
         curve_key_tuples.add(("author", author_name))
         curve_key_tuples.add(("domain", author_email.split("@")[-1]))
+        bar.update()
 
+    # ------------------------------------------------------------------
+    # Phase 2: backtrack along first-parent at fixed intervals.
+    # ------------------------------------------------------------------
     desc = "{:<55s}".format("Backtracking the master branch")
-    with tqdm(desc=desc, unit=" Commits", **tqdm_args) as bar:
-        commit = repo.head.commit
-        last_date = None
-        while True:
-            if last_date is None or commit.committed_date < last_date - interval:
-                master_commits.append(commit)
-                last_date = commit.committed_date
-            bar.update()
-            if not commit.parents:
-                break
-            commit = commit.parents[0]
-        del commit
+    bar = bar_factory(desc=desc, phase="backtrack")
+    head_sha = backend.resolve_branch(branch) or backend.head_commit_hexsha()
+    sha = head_sha
+    last_date = None
+    while True:
+        commit = backend.commit(sha)
+        if last_date is None or commit.committed_date < last_date - interval:
+            master_commits.append(commit)
+            last_date = commit.committed_date
+        bar.update()
+        parents = backend.parents(sha)
+        if not parents:
+            break
+        sha = parents[0]
 
+    # ------------------------------------------------------------------
+    # Phase 3: discover entries at each sampled commit.
+    # ------------------------------------------------------------------
     if ignore and not only:
-        only = ["**"]  # stupid fix
-    def_ft_str = "+({:s})".format("|".join(default_filetypes))
+        only = ["**"]  # original "stupid fix"
+    def_ft_str = "+({:s})".format("|".join(_default_filetypes()))
     path_match_str = "{:s}|!+({:s})".format("|".join(only), "|".join(ignore))
     path_match_zero = len(only) == 0 and len(ignore) == 0
-    ok_entry_paths = dict()
+    ok_entry_paths = {}
     all_entries = []
 
     def entry_path_ok(path):
-        # All this matching is slow so let's cache it
         if path not in ok_entry_paths:
             ok_entry_paths[path] = (
                 all_filetypes
                 or fnmatch.fnmatch(
-                    os.path.split(path)[-1], def_ft_str, flags=fnmatch.EXTMATCH
+                    os.path.split(path)[-1], def_ft_str, flags=fnmatch.EXTMATCH,
                 )
             ) and (
                 path_match_zero
@@ -359,209 +569,205 @@ def analyze(
             )
         return ok_entry_paths[path]
 
-    def get_entries(commit):
-        tmp = [
-            MiniEntry(entry)
-            for entry in commit.tree.traverse()
-            if entry.type == "blob" and entry_path_ok(entry.path)
-        ]
-        all_entries.append(tmp)
-        return tmp
-
-    master_commits = master_commits[::-1]  # Reverse it so it's chnological ascending
+    master_commits = master_commits[::-1]  # chronological ascending
     entries_total = 0
     desc = "{:<55s}".format("Discovering entries & caching filenames")
-    with tqdm(
+    cbar = bar_factory(total=len(master_commits), desc=desc, phase="discover_commits")
+    ebar = bar_factory(
         desc="{:<55s}".format("Entries Discovered"),
-        unit=" Entries",
-        position=1,
-        **tqdm_args,
-    ) as bar:
-        for i, commit in enumerate(
-            tqdm(master_commits, desc=desc, unit=" Commits", position=0, **tqdm_args)
-        ):
-            for entry in get_entries(commit):
-                entries_total += 1
-                _, ext = os.path.splitext(entry.path)
-                curve_key_tuples.add(("ext", ext))
-                curve_key_tuples.add(("dir", get_top_dir(entry.path)))
-                bar.update()
-            master_commits[i] = MiniCommit(
-                commit
-            )  # Might have cached the entries, we don't want that
-
-    # We don't need these anymore, let GC Cleanup
-    del repo
-    del ok_entry_paths
-    del commit
-    # End GC Cleanup
-
-    curves = {}  # multiple y axis, in the form key_tuple: Array[y-axis points]
-    ts = []  # x axis
-    last_file_y = (
-        {}
-    )  # Contributions of each individual file to each individual curve, when the file was last seen
-    cur_y = {}  # Sum of all contributions between files towards each individual curve
-    blamer = BlameDriver(
-        repo_dir,
-        procs,
-        last_file_y,
-        cur_y,
-        blame_kwargs,
-        commit2cohort,
-        use_mailmap,
-        quiet,
+        phase="discover_entries",
     )
-    commit_history = (
-        {}
-    )  # How many lines of a commit (by SHA) still exist at a given time
-    last_file_hash = {}  # File SHAs when they were last seen
+    for i, commit in enumerate(master_commits):
+        for entry in backend.list_blobs(commit.hexsha):
+            if not entry_path_ok(entry.path):
+                continue
+            entries_total += 1
+            _, ext = os.path.splitext(entry.path)
+            curve_key_tuples.add(("ext", ext))
+            curve_key_tuples.add(("dir", get_top_dir(entry.path)))
+            ebar.update()
+            all_entries.append(_AppendStub(i, entry))  # placeholder
+        cbar.update()
 
-    # Allow script to be paused and process count to change
-    def handler(a, b):
-        try:
-            blamer.pause()
-            print("\n\nProcess paused")
-            x = int(
-                input(
-                    "0. Exit\n1. Continue\n2. Modify process count\nSelect an option: "
-                )
-            )
+    # Convert per-commit entry list back into a list-of-lists indexed by i.
+    per_commit_entries = [[] for _ in master_commits]
+    for stub in all_entries:
+        per_commit_entries[stub.i].append(stub.entry)
+    all_entries = per_commit_entries
 
-            if x == 1:
-                return blamer.resume()
-            elif x == 2:
-                x = int(
-                    input(
+    del ok_entry_paths
+
+    # ------------------------------------------------------------------
+    # Phase 4: blame each sampled commit.
+    # ------------------------------------------------------------------
+    curves = {}
+    ts = []
+    last_file_y = {}
+    cur_y = {}
+
+    use_serial = procs is None or procs <= 0 or repo_dir is None
+    if use_serial:
+        blamer = _SerialBlameDriver(
+            backend, last_file_y, cur_y, blame_kwargs, commit2cohort, use_mailmap,
+        )
+    else:
+        blamer = _BlameDriver(
+            repo_dir, procs, last_file_y, cur_y, blame_kwargs,
+            commit2cohort, use_mailmap, quiet,
+        )
+
+    commit_history = {}
+    last_file_hash = {}
+
+    # Allow the (multiprocess) CLI to be paused and process count changed.
+    sigint_installed = False
+    if not quiet and not use_serial:
+        import signal as _signal
+
+        def handler(a, b):
+            try:
+                blamer.pause()
+                print("\n\nProcess paused")
+                x = int(input(
+                    "0. Exit\n1. Continue\n2. Modify process count\n"
+                    "Select an option: "
+                ))
+                if x == 1:
+                    return blamer.resume()
+                elif x == 2:
+                    x = int(input(
                         "\n\nCurrent Processes: {:d}\nNew Setting: ".format(
-                            blamer.proc_count
+                            blamer.proc_count,
                         )
-                    )
-                )
-                if x > 0:
-                    blamer.proc_count = x
-                    blamer.spawn_process(spawn_only=True)
-                return blamer.resume()
-            os._exit(1)  # sys.exit() does weird things
-        except:
-            pass
-        handler(None, None)
+                    ))
+                    if x > 0:
+                        blamer.proc_count = x
+                        blamer.spawn_process(spawn_only=True)
+                    return blamer.resume()
+                os._exit(1)
+            except Exception:
+                pass
+            handler(None, None)
 
-    if not quiet:
-        signal.signal(signal.SIGINT, handler)
+        _signal.signal(_signal.SIGINT, handler)
+        sigint_installed = True
 
     desc = "{:<55s}".format(
-        "Analyzing commit history with {:d} processes".format(procs)
+        "Analyzing commit history with {:d} processes".format(
+            1 if use_serial else procs,
+        )
     )
-    with tqdm(
-        desc="{:<55s}".format("Entries Processed"),
+    bar = bar_factory(
         total=entries_total,
-        unit=" Entries",
-        position=1,
-        maxinterval=1,
-        miniters=100,
-        **tqdm_args,
-    ) as bar:
-        cbar = tqdm(master_commits, desc=desc, unit=" Commits", position=0, **tqdm_args)
-        for commit in cbar:
-            t = datetime.datetime.utcfromtimestamp(commit.committed_date)
-            ts.append(t)  # x axis
+        desc="{:<55s}".format("Entries Processed"),
+        phase="blame_entries",
+    )
+    cbar = bar_factory(
+        total=len(master_commits), desc=desc, phase="blame_commits",
+    )
+    for commit in master_commits:
+        t = datetime.datetime.utcfromtimestamp(commit.committed_date)
+        ts.append(t)
 
-            # START: Fast diff, to reduce no. of files checked via blame.
-            # File hashes are checked against previous iteration
-            entries = all_entries.pop(
-                0
-            )  # all_entries grows smaller as curves grows larger
-
-            check_entries = []
-            cur_file_hash = {}
-            for entry in entries:
-                cur_file_hash[entry.path] = entry.binsha
-                if entry.path in last_file_hash:
-                    if last_file_hash[entry.path] != entry.binsha:  # Modified file
-                        for key_tuple, count in last_file_y[entry.path].items():
-                            cur_y[key_tuple] -= count
-                        check_entries.append(entry)
-                    else:  # Identical file
-                        bar.update()
-                    del last_file_hash[
-                        entry.path
-                    ]  # Identical/Modified file removed, leaving deleted files behind
-                else:  # Newly added file
+        # Fast diff against previous iteration.
+        entries = all_entries.pop(0)
+        check_entries = []
+        cur_file_hash = {}
+        for entry in entries:
+            cur_file_hash[entry.path] = entry.binsha
+            if entry.path in last_file_hash:
+                if last_file_hash[entry.path] != entry.binsha:
+                    for key_tuple, count in last_file_y[entry.path].items():
+                        cur_y[key_tuple] -= count
                     check_entries.append(entry)
-            for deleted_path in last_file_hash.keys():  # Deleted files
-                for key_tuple, count in last_file_y[deleted_path].items():
-                    cur_y[key_tuple] -= count
-            last_file_hash = cur_file_hash
-            # END: Fast diff
+                else:
+                    bar.update()
+                del last_file_hash[entry.path]
+            else:
+                check_entries.append(entry)
+        for deleted_path in last_file_hash.keys():
+            for key_tuple, count in last_file_y[deleted_path].items():
+                cur_y[key_tuple] -= count
+        last_file_hash = cur_file_hash
 
-            # Multiprocess blame checker, updates cur_y & last_file_y
-            blamer.fetch(commit, check_entries, bar)
+        blamer.fetch(commit, check_entries, bar)
+        if not use_serial:
             cbar.set_description(
                 "{:<55s}".format(
                     "Analyzing commit history with {:d} processes".format(
-                        len(blamer.proc_pool)
+                        len(blamer.proc_pool),
                     )
                 ),
                 False,
             )
+        cbar.update()
 
-            for key_tuple, count in cur_y.items():
-                key_category, key = key_tuple
-                if key_category == "sha":
-                    commit_history.setdefault(key, []).append(
-                        (commit.committed_date, count)
-                    )
+        for key_tuple, count in cur_y.items():
+            key_category, key = key_tuple
+            if key_category == "sha":
+                commit_history.setdefault(key, []).append(
+                    (commit.committed_date, count),
+                )
 
-            for key_tuple in curve_key_tuples:
-                curves.setdefault(key_tuple, []).append(cur_y.get(key_tuple, 0))
+        for key_tuple in curve_key_tuples:
+            curves.setdefault(key_tuple, []).append(cur_y.get(key_tuple, 0))
 
-    signal.signal(signal.SIGINT, signal.default_int_handler)
+    if sigint_installed:
+        import signal as _signal
+        _signal.signal(_signal.SIGINT, _signal.default_int_handler)
 
-    def dump_json(output_fn, key_type, label_fmt=lambda x: x):
+    # ------------------------------------------------------------------
+    # Phase 5: emit JSON outputs.
+    # ------------------------------------------------------------------
+    def _build(key_type, label_fmt=lambda x: x):
         key_items = sorted(k for t, k in curve_key_tuples if t == key_type)
-        fn = os.path.join(outdir, output_fn)
-        if not quiet:
-            print("Writing %s data to %s" % (key_type, fn))
-        f = open(fn, "w")
-        json.dump(
-            {
-                "y": [curves[(key_type, key_item)] for key_item in key_items],
-                "ts": [t.isoformat() for t in ts],
-                "labels": [label_fmt(key_item) for key_item in key_items],
-            },
-            f,
-        )
-        f.close()
+        return {
+            "y": [curves[(key_type, k)] for k in key_items],
+            "ts": [t.isoformat() for t in ts],
+            "labels": [label_fmt(k) for k in key_items],
+        }
 
-    # Dump accumulated stuff
-    dump_json("cohorts.json", "cohort", lambda c: "Code added in %s" % c)
-    dump_json("exts.json", "ext")
-    dump_json("authors.json", "author")
-    dump_json("dirs.json", "dir")
-    dump_json("domains.json", "domain")
+    results = {
+        "cohorts": _build("cohort", lambda c: "Code added in %s" % c),
+        "exts": _build("ext"),
+        "authors": _build("author"),
+        "dirs": _build("dir"),
+        "domains": _build("domain"),
+        "survival": commit_history,
+    }
 
-    # Dump survival data
-    fn = os.path.join(outdir, "survival.json")
-    f = open(fn, "w")
-    if not quiet:
-        print("Writing survival data to %s" % fn)
-    json.dump(commit_history, f)
-    f.close()
+    if not write_outputs:
+        return results
+
+    def _dump(name, data):
+        fn = os.path.join(outdir, name)
+        if not quiet and progress is None:
+            print("Writing data to %s" % fn)
+        with open(fn, "w") as f:
+            json.dump(data, f)
+
+    _dump("cohorts.json", results["cohorts"])
+    _dump("exts.json", results["exts"])
+    _dump("authors.json", results["authors"])
+    _dump("dirs.json", results["dirs"])
+    _dump("domains.json", results["domains"])
+    _dump("survival.json", results["survival"])
+    return None
 
 
-@functools.lru_cache(maxsize=None)
-def get_mailmap_author_name_email(repo, author_name, author_email):
-    pre_mailmap_author_email = f"{author_name} <{author_email}>"
-    mail_mapped_author_email: str = repo.git.check_mailmap(pre_mailmap_author_email)
-    if " <" in mail_mapped_author_email:
-        mailmap_name, rest = mail_mapped_author_email.split(" <", maxsplit=1)
-        mailmap_email = rest.rstrip(">")
-    else:
-        mailmap_name = mail_mapped_author_email
-        mailmap_email = author_email
-    return mailmap_name, mailmap_email
+class _AppendStub:
+    """Tiny holder used while flattening per-commit entries."""
 
+    __slots__ = ("i", "entry")
+
+    def __init__(self, i, entry):
+        self.i = i
+        self.entry = entry
+
+
+# ---------------------------------------------------------------------------
+# CLI entry point – behaviour preserved.
+# ---------------------------------------------------------------------------
 
 def analyze_cmdline():
     parser = argparse.ArgumentParser(description="Analyze git repo")
@@ -602,15 +808,14 @@ def analyze_cmdline():
     )
     parser.add_argument(
         "--ignore-whitespace",
-        default=[],
+        default=False,
         action="store_true",
         help="Ignore whitespace changes when running git blame.",
     )
     parser.add_argument(
         "--all-filetypes",
         action="store_true",
-        help="Include all files (if not set then will only analyze %s"
-        % ",".join(default_filetypes),
+        help="Include all files (if not set then will only analyze the default Pygments-detected filetypes)",
     )
     parser.add_argument(
         "--quiet",
@@ -621,7 +826,7 @@ def analyze_cmdline():
         "--procs",
         default=os.cpu_count(),
         type=int,
-        help="Number of processes to use. There is a point of diminishing returns, and RAM may become an issue on large repos (default: %(default)s)",
+        help="Number of processes to use. Use 0 to run a single in-process serial blame loop (required when running under WASM/Pyodide). There is a point of diminishing returns, and RAM may become an issue on large repos (default: %(default)s)",
     )
     parser.add_argument(
         "--opt",
@@ -635,8 +840,6 @@ def analyze_cmdline():
         analyze(**kwargs)
     except KeyboardInterrupt:
         exit(1)
-    except:
-        raise
 
 
 if __name__ == "__main__":

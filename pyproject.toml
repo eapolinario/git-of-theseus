@@ -10,14 +10,12 @@ authors = [{ name = "Erik Bernhardsson", email = "mail@erikbern.com" }]
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.9"
+# Core analysis dependencies. Plotting and progress-bar deps are split out into
+# the `plot` extra so the package can be installed in dependency-light
+# environments such as Pyodide / WASM browser builds.
 dependencies = [
     "gitpython",
-    "matplotlib",
-    "numpy",
     "pygments",
-    "python-dateutil",
-    "scipy",
-    "tqdm",
     "wcmatch",
 ]
 
@@ -28,7 +26,22 @@ git-of-theseus-stack-plot = "git_of_theseus:stack_plot_cmdline"
 git-of-theseus-line-plot = "git_of_theseus:line_plot_cmdline"
 
 [project.optional-dependencies]
-dev = ["pytest"]
+# Required to run the *_plot CLIs and to get a tqdm progress bar in the CLI.
+plot = [
+    "matplotlib",
+    "numpy",
+    "python-dateutil",
+    "scipy",
+    "tqdm",
+]
+dev = [
+    "pytest",
+    "matplotlib",
+    "numpy",
+    "python-dateutil",
+    "scipy",
+    "tqdm",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
