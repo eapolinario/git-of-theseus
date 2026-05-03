@@ -44,6 +44,22 @@ This writes several JSON files to `<output-dir>`:
 
 Analysis can take a while on large repos. Run `git-of-theseus-analyze --help` for all options including `--interval`, `--branch`, `--ignore`, and `--only`.
 
+#### Faster analysis with the Rust port (experimental)
+
+A Rust reimplementation of the analyzer is being developed in this repository under `crates/got-core` and `crates/got-cli`. It uses [libgit2](https://libgit2.org/) directly and runs significantly faster than the Python version on large histories while writing JSON files in the exact same schema, so the existing Python plot scripts work unchanged.
+
+Build and run:
+
+```shell
+cargo build --release
+./target/release/git-of-theseus-analyze-rs <path-to-repo> --outdir <output-dir>
+
+# Then use the existing Python plot scripts on the JSON output:
+git-of-theseus-stack-plot <output-dir>/cohorts.json
+```
+
+Flags mirror `git-of-theseus-analyze`. Some Python-only features (mailmap rewriting via `git check-mailmap`, the `--opt` commit-graph flag, and interactive SIGINT pause/resume) are not yet implemented in the Rust port; the Python CLI remains the reference implementation while the migration is in progress.
+
 ### Step 2 — Generate plots
 
 **Stack plot** (cohorts, authors, file extensions, or directories):

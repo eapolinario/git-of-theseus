@@ -38,7 +38,11 @@ fn analyze_tiny_repo_end_to_end() {
 
     fs::write(repo.join("a.py"), "print('hi')\nprint('there')\n").unwrap();
     run(repo, &["add", "a.py"]);
-    run_with_date(repo, "2020-01-15T00:00:00Z", &["commit", "-q", "-m", "first"]);
+    run_with_date(
+        repo,
+        "2020-01-15T00:00:00Z",
+        &["commit", "-q", "-m", "first"],
+    );
 
     fs::write(
         repo.join("b.py"),
@@ -46,7 +50,11 @@ fn analyze_tiny_repo_end_to_end() {
     )
     .unwrap();
     run(repo, &["add", "b.py"]);
-    run_with_date(repo, "2021-06-15T00:00:00Z", &["commit", "-q", "-m", "second"]);
+    run_with_date(
+        repo,
+        "2021-06-15T00:00:00Z",
+        &["commit", "-q", "-m", "second"],
+    );
 
     let outdir = dir.path().join("out");
     let result = analyze(&AnalyzeOptions {
@@ -84,8 +92,7 @@ fn analyze_tiny_repo_end_to_end() {
         "domains.json",
         "survival.json",
     ] {
-        let bytes =
-            fs::read(outdir.join(name)).unwrap_or_else(|e| panic!("reading {name}: {e}"));
+        let bytes = fs::read(outdir.join(name)).unwrap_or_else(|e| panic!("reading {name}: {e}"));
         let _: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     }
 

@@ -100,3 +100,57 @@ jobs:
 
       - name: Run tests in Nix dev shell
         run: nix develop --command just test
+
+  test-rust:
+    runs-on: ubuntu-latest
+    name: Build and test Rust port
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry / build
+        uses: Swatinem/rust-cache@v2
+
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace --locked
+
+      - name: cargo build --release
+        run: cargo build --workspace --release --locked
+
+      - name: Run analyzer against this repo
+        run: |
+          mkdir -p got-rs
+          ./target/release/git-of-theseus-analyze-rs --quiet --outdir got-rs .
+          # Sanity-check JSON shape.
+          python3 - <<'PY'
+          import json
+          for fn in ['cohorts.json','exts.json','authors.json','dirs.json','domains.json']:
+              d = json.load(open(f'got-rs/{fn}'))
+              assert set(d.keys()) == {'y','ts','labels'}, fn
+              assert len(d['labels']) == len(d['y']), fn
+              n = len(d['ts'])
+              assert all(len(s) == n for s in d['y']), fn
+          json.load(open('got-rs/survival.json'))
+          print('json ok')
+          PY
+
+      - name: Verify Python plot scripts can consume Rust JSON
+        run: |
+          pip install .
+          export MPLBACKEND=Agg
+          git-of-theseus-stack-plot got-rs/cohorts.json --outfile got-rs/cohorts.png
+          git-of-theseus-line-plot got-rs/authors.json --outfile got-rs/authors.png
+          git-of-theseus-survival-plot got-rs/survival.json --exp-fit --outfile got-rs/survival.png
