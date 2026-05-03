@@ -13,8 +13,17 @@ Here's an example running it on this very repository — code broken down by the
 This is a fork of the original [git-of-theseus](https://github.com/erikbern/git-of-theseus) project. Install directly from this repository:
 
 ```shell
+# CLI + plotting (recommended for local use)
+pip install 'git+https://github.com/eapolinario/git-of-theseus.git#egg=git-of-theseus[plot]'
+
+# Core analysis only (smaller install — no matplotlib/numpy/scipy/tqdm).
+# Useful when embedding the analyzer in another tool, in CI, or in WASM.
 pip install git+https://github.com/eapolinario/git-of-theseus.git
 ```
+
+The `[plot]` extra pulls in `matplotlib`, `numpy`, `scipy`, `python-dateutil`,
+and `tqdm`. Without it, the `git-of-theseus-analyze` CLI still works (writing
+JSON output), but the `*-plot` commands won't.
 
 Or clone and install with [uv](https://github.com/astral-sh/uv):
 
@@ -23,6 +32,12 @@ git clone https://github.com/eapolinario/git-of-theseus.git
 cd git-of-theseus
 uv sync
 ```
+
+### Run it in your browser
+
+There is a fully client-side build under [`web/`](web/) that uses Pyodide +
+isomorphic-git to run the cohort and author analyses without installing
+anything. See [`web/README.md`](web/README.md) for setup and limitations.
 
 ## Usage
 
