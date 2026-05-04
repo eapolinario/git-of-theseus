@@ -17,3 +17,8 @@ got/
 # Rust
 /target/
 **/*.rs.bk
+
+# Nix
+/result
+/result-*
+.direnv/

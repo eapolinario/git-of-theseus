@@ -13,6 +13,52 @@ install:
 analyze REPO OUTDIR="got":
     uv run git-of-theseus-analyze {{ REPO }} --outdir {{ OUTDIR }}
 
+# Analyze a git repository using the Rust CLI.
+# All flags are forwarded to the binary; see `just analyze-rs-help` for options.
+# Example:
+#   just analyze-rs ../myrepo --branch main --quiet --ignore '*.lock'
+analyze-rs *ARGS:
+    cargo run --release -p got-cli -- {{ ARGS }}
+
+# Show the Rust analyzer's help.
+analyze-rs-help:
+    cargo run --release -p got-cli -- --help
+
+# Stack plot (Rust). Example: just stack-plot-rs got/cohorts.json cohorts.png
+stack-plot-rs FILE="got/cohorts.json" OUTFILE="stack_plot.png":
+    cargo run --release -p got-cli --bin git-of-theseus-stack-plot-rs -- {{ FILE }} --outfile {{ OUTFILE }}
+
+# Normalized stack plot (Rust)
+stack-plot-rs-normalized FILE="got/cohorts.json" OUTFILE="stack_plot_normalized.png":
+    cargo run --release -p got-cli --bin git-of-theseus-stack-plot-rs -- {{ FILE }} --normalize --outfile {{ OUTFILE }}
+
+# Line plot (Rust)
+line-plot-rs FILE="got/authors.json" OUTFILE="line_plot.png":
+    cargo run --release -p got-cli --bin git-of-theseus-line-plot-rs -- {{ FILE }} --outfile {{ OUTFILE }}
+
+# Survival plot (Rust)
+survival-plot-rs FILE="got/survival.json" OUTFILE="survival_plot.png":
+    cargo run --release -p got-cli --bin git-of-theseus-survival-plot-rs -- {{ FILE }} --outfile {{ OUTFILE }}
+
+# Survival plot with exponential fit (Rust)
+survival-plot-rs-expfit FILE="got/survival.json" OUTFILE="survival_plot_expfit.png":
+    cargo run --release -p got-cli --bin git-of-theseus-survival-plot-rs -- {{ FILE }} --exp-fit --outfile {{ OUTFILE }}
+
+# Run the full Rust pipeline on a repo and generate all charts.
+all-rs REPO OUTDIR="got-rs":
+    cargo run --release -p got-cli --bin git-of-theseus-analyze-rs -- {{ REPO }} --outdir {{ OUTDIR }}
+    just stack-plot-rs {{ OUTDIR }}/cohorts.json cohorts-rs.png
+    just stack-plot-rs-normalized {{ OUTDIR }}/cohorts.json cohorts-rs-normalized.png
+    just line-plot-rs {{ OUTDIR }}/authors.json authors-rs.png
+    just survival-plot-rs {{ OUTDIR }}/survival.json survival-rs.png
+    just survival-plot-rs-expfit {{ OUTDIR }}/survival.json survival-rs-expfit.png
+
+# Run the Rust workspace test suite.
+test-rs:
+    cargo fmt --check
+    cargo clippy --workspace --all-targets -- -D warnings
+    cargo test --workspace
+
 # Stack plot from analysis output (FILE e.g. got/cohorts.json)
 stack-plot FILE="got/cohorts.json" OUTFILE="stack_plot.png":
     uv run git-of-theseus-stack-plot {{ FILE }} --outfile {{ OUTFILE }}
