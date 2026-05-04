@@ -13,3 +13,7 @@ venv/
 got/
 *.png
 !pics/*.png
+
+# Rust
+/target/
+**/*.rs.bk
