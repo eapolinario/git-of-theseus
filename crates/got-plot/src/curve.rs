@@ -129,11 +129,11 @@ impl Curve {
         }
     }
 
-    /// Convert each column to its share (in percent) of the column sum.
-    /// Mirrors the `--normalize` behaviour of the Python plot scripts.
-    ///
-    /// Returns `f64` because percentages are non-integer.
-    pub fn normalize(&self) -> Vec<Vec<f64>> {
+    /// Column-wise sums of `self.y`. Useful for `--normalize` parity with
+    /// `line_plot.py`, which computes `y_sums = numpy.sum(y, axis=0)` on
+    /// the *untrimmed* matrix and divides the kept rows by those totals
+    /// (so the kept share does NOT sum to 100% when some rows were dropped).
+    pub fn column_sums(&self) -> Vec<u64> {
         let cols = self.ts.len();
         let mut col_sum = vec![0u64; cols];
         for row in &self.y {
@@ -141,20 +141,126 @@ impl Curve {
                 col_sum[i] += v;
             }
         }
+        col_sum
+    }
+
+    /// Convert each column to its share (in percent) of an externally
+    /// supplied per-column divisor. `col_sums` must have one entry per
+    /// timestamp. Used by `line_plot` to normalize the trimmed top-N
+    /// rows against the *pre-trim* column totals.
+    pub fn normalize_by(&self, col_sums: &[u64]) -> Vec<Vec<f64>> {
         self.y
             .iter()
             .map(|row| {
                 row.iter()
                     .enumerate()
                     .map(|(i, &v)| {
-                        if col_sum[i] == 0 {
+                        if col_sums[i] == 0 {
                             0.0
                         } else {
-                            100.0 * v as f64 / col_sum[i] as f64
+                            100.0 * v as f64 / col_sums[i] as f64
                         }
                     })
                     .collect()
             })
             .collect()
+    }
+
+    /// Convert each column to its share (in percent) of the column sum of
+    /// `self.y`. Mirrors `stack_plot.py`'s `--normalize` behaviour: there,
+    /// trimming aggregates dropped rows into `"other"`, so the post-trim
+    /// column sums equal the pre-trim totals.
+    pub fn normalize(&self) -> Vec<Vec<f64>> {
+        let col_sum = self.column_sums();
+        self.normalize_by(&col_sum)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::NaiveDate;
+
+    fn dt(y: i32, m: u32, d: u32) -> NaiveDateTime {
+        NaiveDate::from_ymd_opt(y, m, d)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+    }
+
+    fn make(rows: Vec<Vec<u64>>, labels: Vec<&str>) -> Curve {
+        let ncols = rows[0].len();
+        let ts = (0..ncols).map(|i| dt(2020, 1, (i + 1) as u32)).collect();
+        Curve {
+            y: rows,
+            ts,
+            labels: labels.into_iter().map(String::from).collect(),
+        }
+    }
+
+    /// Regression for line_plot parity: `column_sums` captured BEFORE
+    /// `top_n` must equal the untrimmed column totals; normalizing the
+    /// trimmed top-N against those sums must leave the dropped rows'
+    /// share missing (i.e. kept rows do NOT sum to 100%).
+    #[test]
+    fn line_plot_normalize_uses_pretrim_sums() {
+        // 3 series of constant value, totals = 100 per column.
+        // labels chosen so alphabetical-after-top sort is deterministic.
+        let curve = make(
+            vec![vec![10, 10, 10], vec![50, 50, 50], vec![40, 40, 40]],
+            vec!["c-small", "a-big", "b-mid"],
+        );
+
+        let pretrim = curve.column_sums();
+        assert_eq!(pretrim, vec![100, 100, 100]);
+
+        // Top-2 by per-series max, then alphabetical by label.
+        let trimmed = curve.top_n(2, /*aggregate_other=*/ false);
+        assert_eq!(trimmed.labels, vec!["a-big", "b-mid"]);
+
+        let norm = trimmed.normalize_by(&pretrim);
+        // Kept rows should be 50% and 40% of the *original* total per
+        // column, summing to 90% — not 100%. This matches Python's
+        // `y = 100.0 * y / y_sums` where `y_sums` was computed pre-trim.
+        for i in 0..3 {
+            let col_total: f64 = norm.iter().map(|r| r[i]).sum();
+            assert!(
+                (col_total - 90.0).abs() < 1e-9,
+                "col {i}: expected 90.0, got {col_total}"
+            );
+        }
+        assert!((norm[0][0] - 50.0).abs() < 1e-9);
+        assert!((norm[1][0] - 40.0).abs() < 1e-9);
+    }
+
+    /// stack_plot parity: with `aggregate_other=true` the dropped rows
+    /// are rolled into `"other"`, so post-trim column sums equal
+    /// pre-trim sums and `normalize()` produces shares that sum to 100%.
+    #[test]
+    fn stack_plot_normalize_with_other_sums_to_100() {
+        let curve = make(
+            vec![vec![10, 10, 10], vec![50, 50, 50], vec![40, 40, 40]],
+            vec!["c-small", "a-big", "b-mid"],
+        );
+        let trimmed = curve.top_n(2, /*aggregate_other=*/ true);
+        assert_eq!(trimmed.labels, vec!["a-big", "b-mid", "other"]);
+        let norm = trimmed.normalize();
+        for i in 0..3 {
+            let total: f64 = norm.iter().map(|r| r[i]).sum();
+            assert!((total - 100.0).abs() < 1e-9, "col {i}: {total}");
+        }
+    }
+
+    #[test]
+    fn column_sums_zero_columns_produce_zero_shares() {
+        let curve = make(vec![vec![0, 5], vec![0, 5]], vec!["a", "b"]);
+        let sums = curve.column_sums();
+        assert_eq!(sums, vec![0, 10]);
+        let norm = curve.normalize_by(&sums);
+        // Zero-divisor column => 0% rather than NaN.
+        assert_eq!(norm[0][0], 0.0);
+        assert_eq!(norm[1][0], 0.0);
+        assert!((norm[0][1] - 50.0).abs() < 1e-9);
+        assert!((norm[1][1] - 50.0).abs() < 1e-9);
     }
 }

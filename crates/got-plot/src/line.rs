@@ -39,9 +39,18 @@ impl Default for LinePlotOptions {
 /// Render the line plot. Returns the path that was written.
 pub fn line_plot(opts: &LinePlotOptions) -> Result<PathBuf> {
     let curve = Curve::load(&opts.input)?;
+    // line_plot.py computes y_sums BEFORE trimming and divides the kept
+    // top-N rows by those untrimmed column totals, so kept shares do not
+    // sum to 100% when some series were dropped. We must capture the
+    // pre-trim sums here, before `top_n` discards rows.
+    let pretrim_sums = if opts.normalize {
+        Some(curve.column_sums())
+    } else {
+        None
+    };
     let curve = curve.top_n(opts.max_n, /* aggregate_other = */ false);
-    let series_f64: Vec<Vec<f64>> = if opts.normalize {
-        curve.normalize()
+    let series_f64: Vec<Vec<f64>> = if let Some(sums) = pretrim_sums.as_ref() {
+        curve.normalize_by(sums)
     } else {
         curve
             .y
