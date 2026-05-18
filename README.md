@@ -46,19 +46,31 @@ Analysis can take a while on large repos. Run `git-of-theseus-analyze --help` fo
 
 #### Faster analysis with the Rust port (experimental)
 
-A Rust reimplementation of the analyzer is being developed in this repository under `crates/got-core` and `crates/got-cli`. It uses [libgit2](https://libgit2.org/) directly and runs significantly faster than the Python version on large histories while writing JSON files in the exact same schema, so the existing Python plot scripts work unchanged.
+A Rust reimplementation is being developed in this repository under `crates/got-core`, `crates/got-cli`, and `crates/got-plot`. It uses [libgit2](https://libgit2.org/) directly and runs significantly faster than the Python version on large histories. The full pipeline — analyze + line/stack/survival plots — is available in Rust:
 
-Build and run:
+| Python CLI | Rust CLI |
+|---|---|
+| `git-of-theseus-analyze` | `git-of-theseus-analyze-rs` |
+| `git-of-theseus-line-plot` | `git-of-theseus-line-plot-rs` |
+| `git-of-theseus-stack-plot` | `git-of-theseus-stack-plot-rs` |
+| `git-of-theseus-survival-plot` | `git-of-theseus-survival-plot-rs` |
+
+The Rust analyzer writes the same JSON schema as Python, so you can mix and match — e.g. analyze with Rust and plot with Python, or vice versa.
+
+Build and run end-to-end:
 
 ```shell
 cargo build --release
-./target/release/git-of-theseus-analyze-rs <path-to-repo> --outdir <output-dir>
-
-# Then use the existing Python plot scripts on the JSON output:
-git-of-theseus-stack-plot <output-dir>/cohorts.json
+OUT=got-rs
+./target/release/git-of-theseus-analyze-rs <path-to-repo> --outdir $OUT
+./target/release/git-of-theseus-stack-plot-rs $OUT/cohorts.json --outfile cohorts.png
+./target/release/git-of-theseus-line-plot-rs   $OUT/authors.json --normalize --outfile authors.png
+./target/release/git-of-theseus-survival-plot-rs $OUT/survival.json --exp-fit --outfile survival.png
 ```
 
-Flags mirror `git-of-theseus-analyze`. Some Python-only features (mailmap rewriting via `git check-mailmap`, the `--opt` commit-graph flag, and interactive SIGINT pause/resume) are not yet implemented in the Rust port; the Python CLI remains the reference implementation while the migration is in progress.
+All Rust plot binaries support both PNG and SVG output (chosen by file extension) and accept the same flags as their Python counterparts (`--outfile`, `--max-n`, `--normalize`, `--exp-fit`, `--years`). `--display` is currently a no-op.
+
+Flags on `git-of-theseus-analyze-rs` mirror `git-of-theseus-analyze`. Some Python-only features (mailmap rewriting via `git check-mailmap`, the `--opt` commit-graph flag, and interactive SIGINT pause/resume) are not yet implemented in the Rust port; the Python CLI remains the reference implementation while the migration is in progress.
 
 ##### Rust port — TODO
 
@@ -87,8 +99,12 @@ The Rust port is being delivered incrementally. Tracked work:
 - [ ] Run blame on a Web Worker so the UI stays responsive
 - [ ] Optional: GitHub GraphQL `blame` API as an alternate backend (no proxy, rate-limited)
 
-**Part 3 — Rust ports of plot CLIs (optional)**
-- [ ] `got-stack-plot`, `got-line-plot`, `got-survival-plot` Rust binaries (likely on top of `plotters` or by emitting SVG directly), so a deployment can be Python-free
+**Part 3 — Rust ports of plot CLIs**
+- [x] `git-of-theseus-line-plot-rs`, `git-of-theseus-stack-plot-rs`, `git-of-theseus-survival-plot-rs` binaries built on [`plotters`](https://crates.io/crates/plotters), with PNG + SVG output and exp-fit parity to scipy's Nelder-Mead (verified to 6 decimals on a real `survival.json`)
+- [ ] Switch `plotters` to `default-features = false` + `ab_glyph` + a bundled font (e.g. DejaVuSans) so the Rust CLI no longer requires system `fontconfig`/`freetype` (and drop those deps from `flake.nix`)
+- [ ] Wire `--display` to actually open the rendered file (e.g. via the `open` crate / `xdg-open`); currently a no-op that prints a hint
+- [ ] Visual-regression snapshot tests for the rendered PNGs (golden-file diff with a small tolerance) once the rendering style stabilizes
+- [ ] Investigate visual parity with matplotlib's `ggplot` style: tick density, axis label font size, legend placement
 - [ ] Decide whether to keep the Python plot scripts or deprecate them once Rust parity is reached
 
 **Part 4 — Cutover**

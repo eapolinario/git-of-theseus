@@ -11,7 +11,21 @@ rust-version.workspace = true
 name = "git-of-theseus-analyze-rs"
 path = "src/main.rs"
 
+[[bin]]
+name = "git-of-theseus-line-plot-rs"
+path = "src/bin/line_plot.rs"
+
+[[bin]]
+name = "git-of-theseus-stack-plot-rs"
+path = "src/bin/stack_plot.rs"
+
+[[bin]]
+name = "git-of-theseus-survival-plot-rs"
+path = "src/bin/survival_plot.rs"
+
+
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
 got-core = { path = "../got-core" }
+got-plot = { path = "../got-plot" }

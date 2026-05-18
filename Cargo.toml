@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/got-core",
     "crates/got-cli",
+    "crates/got-plot",
 ]
 
 [workspace.package]
@@ -22,3 +23,4 @@ indicatif = "0.17"
 rayon = "1.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+plotters = "0.3"
