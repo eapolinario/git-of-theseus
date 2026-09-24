@@ -17,6 +17,7 @@
           numpy
           pygments
           ps."python-dateutil"
+          pyyaml
           scipy
           tqdm
           wcmatch
@@ -92,6 +93,7 @@
             numpy
             pygments
             pkgs.python3Packages."python-dateutil"
+            pyyaml
             scipy
             tqdm
             wcmatch

@@ -22,7 +22,7 @@ import argparse, dateutil.parser, json, numpy, sys
 from matplotlib import pyplot
 
 
-from .events import add_events_from_path
+from .events import add_event_annotations, load_events, save_event_plot
 from .utils import generate_n_colors
 
 
@@ -34,6 +34,7 @@ def line_plot(
     normalize=False,
     events=None,
 ):
+    annotations = load_events(events) if events is not None else []
     data = json.load(open(input_fn))  # TODO do we support multiple arguments here?
     y = numpy.array(data["y"])
     y_sums = numpy.sum(y, axis=0)
@@ -53,7 +54,6 @@ def line_plot(
     for color, label, series in zip(colors, labels, y):
         pyplot.plot(ts, series, color=color, label=label, linewidth=3)
     pyplot.legend(loc=2)
-    add_events_from_path(pyplot.gca(), events)
     if normalize:
         pyplot.ylabel("Share of lines of code (%)")
         pyplot.ylim([0, 100])
@@ -61,7 +61,8 @@ def line_plot(
         pyplot.ylabel("Lines of code")
     print("Writing output to %s" % outfile)
     pyplot.tight_layout()
-    pyplot.savefig(outfile)
+    tooltips = add_event_annotations(pyplot.gca(), annotations)
+    save_event_plot(pyplot.gcf(), outfile, tooltips)
     if display:
         pyplot.show()
 
@@ -94,7 +95,10 @@ def line_plot_cmdline():
     parser.add_argument("input_fn")
     kwargs = vars(parser.parse_args())
 
-    line_plot(**kwargs)
+    try:
+        line_plot(**kwargs)
+    except ValueError as exc:
+        parser.error(str(exc))
 
 
 if __name__ == "__main__":
