@@ -16,6 +16,7 @@ use plotters::prelude::*;
 
 use crate::colors::generate_n_colors;
 use crate::curve::Curve;
+use crate::events::{save_event_svg, EventLayout, SvgTooltip, MARGIN, X_LABEL_AREA, Y_LABEL_AREA};
 
 /// Options for [`stack_plot`], mirroring the flags of
 /// `git-of-theseus-stack-plot`.
@@ -26,6 +27,8 @@ pub struct StackPlotOptions {
     /// Maximum number of bands to draw; extras are summed into `"other"`.
     pub max_n: usize,
     pub normalize: bool,
+    /// Optional YAML manifest of external calendar events.
+    pub events: Option<PathBuf>,
 }
 
 impl Default for StackPlotOptions {
@@ -35,6 +38,7 @@ impl Default for StackPlotOptions {
             output: PathBuf::from("stack_plot.png"),
             max_n: 20,
             normalize: false,
+            events: None,
         }
     }
 }
@@ -85,6 +89,7 @@ pub fn stack_plot(opts: &StackPlotOptions) -> Result<PathBuf> {
     let ts_utc: Vec<DateTime<Utc>> = curve.ts.iter().copied().map(to_utc).collect();
     let t_min = *ts_utc.first().unwrap();
     let t_max = *ts_utc.last().unwrap();
+    let events = EventLayout::load(opts.events.as_deref(), t_min, t_max)?;
 
     let path: &Path = opts.output.as_ref();
     let is_svg = path
@@ -94,8 +99,9 @@ pub fn stack_plot(opts: &StackPlotOptions) -> Result<PathBuf> {
         .unwrap_or(false);
 
     if is_svg {
-        let backend = SVGBackend::new(path, (1920, 1440));
-        draw(
+        let mut svg = String::new();
+        let backend = SVGBackend::with_string(&mut svg, events.dimensions());
+        let tooltips = draw(
             backend.into_drawing_area(),
             &curve.labels,
             &ts_utc,
@@ -104,9 +110,11 @@ pub fn stack_plot(opts: &StackPlotOptions) -> Result<PathBuf> {
             t_max,
             y_max,
             opts.normalize,
+            &events,
         )?;
+        save_event_svg(path, svg, &tooltips)?;
     } else {
-        let backend = BitMapBackend::new(path, (1920, 1440));
+        let backend = BitMapBackend::new(path, events.dimensions());
         draw(
             backend.into_drawing_area(),
             &curve.labels,
@@ -116,6 +124,7 @@ pub fn stack_plot(opts: &StackPlotOptions) -> Result<PathBuf> {
             t_max,
             y_max,
             opts.normalize,
+            &events,
         )?;
     }
 
@@ -136,18 +145,21 @@ fn draw<DB>(
     t_max: DateTime<Utc>,
     y_max: f64,
     normalize: bool,
-) -> Result<()>
+    events: &EventLayout,
+) -> Result<Vec<SvgTooltip>>
 where
     DB: DrawingBackend,
     DB::ErrorType: 'static,
 {
-    root.fill(&RGBColor(229, 229, 229))
-        .map_err(|e| anyhow!("fill: {e}"))?;
+    root.fill(&WHITE).map_err(|e| anyhow!("fill: {e}"))?;
+    let plot = events.plot_area(&root);
+    plot.fill(&RGBColor(229, 229, 229))
+        .map_err(|e| anyhow!("fill plot: {e}"))?;
 
-    let mut chart = ChartBuilder::on(&root)
-        .margin(30)
-        .x_label_area_size(60)
-        .y_label_area_size(80)
+    let mut chart = ChartBuilder::on(&plot)
+        .margin(MARGIN)
+        .x_label_area_size(X_LABEL_AREA)
+        .y_label_area_size(Y_LABEL_AREA)
         .build_cartesian_2d(t_min..t_max, 0.0_f64..y_max)
         .map_err(|e| anyhow!("build chart: {e}"))?;
 
@@ -201,6 +213,8 @@ where
             .legend(move |(x, y)| Rectangle::new([(x, y - 6), (x + 18, y + 6)], color.filled()));
     }
 
+    let tooltips = events.draw(&root, chart.plotting_area(), y_max)?;
+
     chart
         .configure_series_labels()
         .position(SeriesLabelPosition::UpperLeft)
@@ -211,5 +225,5 @@ where
         .map_err(|e| anyhow!("draw legend: {e}"))?;
 
     root.present().map_err(|e| anyhow!("present: {e}"))?;
-    Ok(())
+    Ok(tooltips)
 }

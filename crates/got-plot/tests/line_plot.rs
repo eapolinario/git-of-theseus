@@ -27,6 +27,7 @@ fn writes_nonempty_png() {
         output: output.clone(),
         max_n: 20,
         normalize: false,
+        events: None,
     };
     let written = line_plot(&opts).unwrap();
     assert_eq!(written, output);
@@ -47,6 +48,7 @@ fn writes_svg() {
         output: output.clone(),
         max_n: 20,
         normalize: true,
+        events: None,
     };
     line_plot(&opts).unwrap();
     let bytes = fs::read(&output).unwrap();

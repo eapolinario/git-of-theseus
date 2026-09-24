@@ -5,13 +5,11 @@
 //! It reads the JSON files produced by the analyzer (see
 //! `got_core::output`) and renders PNG/SVG charts.
 //!
-//! Currently implemented:
-//! - [`line_plot`] — multi-line plot of each label's series.
-//!
-//! Coming soon: stack_plot, survival_plot.
+//! Calendar line and stack plots also accept external event manifests.
 
 pub mod colors;
 pub mod curve;
+pub mod events;
 pub mod line;
 pub mod stack;
 pub mod survival;
