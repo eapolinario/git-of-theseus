@@ -151,10 +151,17 @@ where
     DB: DrawingBackend,
     DB::ErrorType: 'static,
 {
-    root.fill(&WHITE).map_err(|e| anyhow!("fill: {e}"))?;
+    let background = if events.is_active() {
+        WHITE
+    } else {
+        RGBColor(229, 229, 229)
+    };
+    root.fill(&background).map_err(|e| anyhow!("fill: {e}"))?;
     let plot = events.plot_area(&root);
-    plot.fill(&RGBColor(229, 229, 229))
-        .map_err(|e| anyhow!("fill plot: {e}"))?;
+    if events.is_active() {
+        plot.fill(&RGBColor(229, 229, 229))
+            .map_err(|e| anyhow!("fill plot: {e}"))?;
+    }
 
     let mut chart = ChartBuilder::on(&plot)
         .margin(MARGIN)

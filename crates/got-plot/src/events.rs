@@ -451,10 +451,17 @@ impl EventLayout {
         (PLOT_WIDTH, PLOT_HEIGHT + self.top_height + self.key_height)
     }
 
+    pub(crate) fn is_active(&self) -> bool {
+        !self.events.is_empty()
+    }
+
     pub(crate) fn plot_area<DB: DrawingBackend>(
         &self,
         root: &DrawingArea<DB, Shift>,
     ) -> DrawingArea<DB, Shift> {
+        if self.events.is_empty() {
+            return root.clone();
+        }
         root.clone()
             .shrink((0, self.top_height), (PLOT_WIDTH, PLOT_HEIGHT))
     }
@@ -687,5 +694,26 @@ mod tests {
                 assert_ne!(kind.pattern(), other.pattern());
             }
         }
+    }
+
+    #[test]
+    fn no_events_preserves_the_full_plot_area() {
+        let dir = tempdir().unwrap();
+        let output = dir.path().join("plot.png");
+        let start = NaiveDate::from_ymd_opt(2024, 1, 1)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
+        let layout = EventLayout::load(None, start, start + chrono::Duration::days(1)).unwrap();
+        let backend = BitMapBackend::new(&output, layout.dimensions());
+        let root = backend.into_drawing_area();
+        let plot = layout.plot_area(&root);
+        let (x_range, y_range) = plot.get_pixel_range();
+
+        assert_eq!(x_range.start, 0);
+        assert_eq!(x_range.end, PLOT_WIDTH as i32);
+        assert_eq!(y_range.start, 0);
+        assert_eq!(y_range.end, PLOT_HEIGHT as i32);
     }
 }
