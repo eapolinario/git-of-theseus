@@ -68,7 +68,11 @@ OUT=got-rs
 ./target/release/git-of-theseus-survival-plot-rs $OUT/survival.json --exp-fit --outfile survival.png
 ```
 
-All Rust plot binaries support both PNG and SVG output (chosen by file extension) and accept the same flags as their Python counterparts (`--outfile`, `--max-n`, `--normalize`, `--exp-fit`, `--years`). `--display` is currently a no-op.
+All Rust plot binaries support both PNG and SVG output (chosen by file extension)
+and accept the existing plot flags (`--outfile`, `--max-n`, `--normalize`,
+`--exp-fit`, `--years`). `--display` is currently a no-op. The optional
+calendar-event annotations described below are currently available in the
+Python line and stack plot commands.
 
 Flags on `git-of-theseus-analyze-rs` mirror `git-of-theseus-analyze`. Some Python-only features (mailmap rewriting via `git check-mailmap`, the `--opt` commit-graph flag, and interactive SIGINT pause/resume) are not yet implemented in the Rust port; the Python CLI remains the reference implementation while the migration is in progress.
 
@@ -136,6 +140,31 @@ git-of-theseus-survival-plot <output-dir>/survival.json --exp-fit
 ```shell
 git-of-theseus-line-plot <output-dir>/authors.json --normalize
 ```
+
+Line and stack plots use calendar-time x axes. Add optional external event
+markers with a YAML manifest:
+
+```shell
+git-of-theseus-line-plot <output-dir>/authors.json \
+  --events examples/events.yaml --outfile authors-with-events.png
+git-of-theseus-stack-plot <output-dir>/cohorts.json \
+  --events examples/events.yaml --outfile cohorts-with-events.png
+```
+
+The manifest has `schema_version: 1` and an `events` list. Each event requires
+`date`, `provider`, `model`, `event`, `scope`, `label`, and `source`.
+Dates support ISO `YYYY-MM-DD` values and ISO timestamps; timezone-aware
+timestamps are converted to UTC before their calendar date is used. Valid
+event values are `announced`, `available`, `pilot`, `default`, and `retired`.
+Extra evidence fields are allowed. `provider` controls a stable line color and
+`event` controls the line style, so the legend does not rely on color alone.
+Events outside the plot range are ignored and do not expand the axis.
+
+Event markers describe external dates only. `announced` and `available` do not
+mean that code used the model, and the chart makes no causal claim. Shaded
+intervals are not inferred from overlapping releases. The survival plot is
+not calendar-time data: its x axis is elapsed code age in years, so
+`--events` is rejected for that command.
 
 All commands accept `--help` for the full list of options.
 

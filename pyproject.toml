@@ -16,6 +16,7 @@ dependencies = [
     "numpy",
     "pygments",
     "python-dateutil",
+    "pyyaml",
     "scipy",
     "tqdm",
     "wcmatch",

@@ -1,0 +1,19 @@
+# Fictional example only. Replace these values with cited project-specific data.
+schema_version: 1
+events:
+  - date: "2024-02-14"
+    provider: Example AI
+    model: Example Model Alpha
+    event: announced
+    scope: public
+    label: Example Model Alpha announced
+    source: https://example.invalid/releases/alpha
+    notes: Fictional date for documentation and tests.
+  - date: "2024-03-01"
+    provider: Example AI
+    model: Example Model Alpha
+    event: available
+    scope: public
+    label: Example Model Alpha available
+    source: https://example.invalid/releases/alpha
+    notes: Fictional date for documentation and tests.

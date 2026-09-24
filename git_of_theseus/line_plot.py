@@ -22,11 +22,17 @@ import argparse, dateutil.parser, json, numpy, sys
 from matplotlib import pyplot
 
 
+from .events import add_events_from_path
 from .utils import generate_n_colors
 
 
 def line_plot(
-    input_fn, display=False, outfile="line_plot.png", max_n=20, normalize=False
+    input_fn,
+    display=False,
+    outfile="line_plot.png",
+    max_n=20,
+    normalize=False,
+    events=None,
 ):
     data = json.load(open(input_fn))  # TODO do we support multiple arguments here?
     y = numpy.array(data["y"])
@@ -47,14 +53,15 @@ def line_plot(
     for color, label, series in zip(colors, labels, y):
         pyplot.plot(ts, series, color=color, label=label, linewidth=3)
     pyplot.legend(loc=2)
+    add_events_from_path(pyplot.gca(), events)
     if normalize:
         pyplot.ylabel("Share of lines of code (%)")
         pyplot.ylim([0, 100])
     else:
         pyplot.ylabel("Lines of code")
     print("Writing output to %s" % outfile)
-    pyplot.savefig(outfile)
     pyplot.tight_layout()
+    pyplot.savefig(outfile)
     if display:
         pyplot.show()
 
@@ -78,6 +85,11 @@ def line_plot_cmdline():
         "--normalize",
         action="store_true",
         help="Plot the share of each, so it adds up to 100%%",
+    )
+    parser.add_argument(
+        "--events",
+        type=str,
+        help="YAML manifest of external calendar-time events",
     )
     parser.add_argument("input_fn")
     kwargs = vars(parser.parse_args())

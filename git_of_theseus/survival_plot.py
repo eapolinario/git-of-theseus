@@ -30,8 +30,18 @@ from matplotlib import pyplot
 
 
 def survival_plot(
-    input_fns, exp_fit=False, display=False, outfile="survival_plot", years=5
+    input_fns,
+    exp_fit=False,
+    display=False,
+    outfile="survival_plot",
+    years=5,
+    events=None,
 ):
+    if events is not None:
+        raise ValueError(
+            "--events is not supported for survival plots: the x-axis is elapsed age, "
+            "not calendar time"
+        )
     all_deltas = []
     YEAR = 365.25 * 24 * 60 * 60
     pyplot.figure(figsize=(13, 8))
@@ -136,8 +146,18 @@ def survival_plot_cmdline():
         default=5,
         help="Number of years on x axis (default: %(default)s)",
     )
+    parser.add_argument(
+        "--events",
+        type=str,
+        help="Not supported: survival plots use elapsed-age, not calendar-time, axes",
+    )
     parser.add_argument("input_fns", nargs="*")
     kwargs = vars(parser.parse_args())
+    if kwargs["events"] is not None:
+        parser.error(
+            "--events is not supported: survival plots use elapsed age, "
+            "not calendar time"
+        )
 
     survival_plot(**kwargs)
 
