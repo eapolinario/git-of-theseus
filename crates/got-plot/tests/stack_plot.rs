@@ -36,6 +36,7 @@ fn writes_nonempty_png() {
         output: output.clone(),
         max_n: 20,
         normalize: false,
+        events: None,
     };
     stack_plot(&opts).unwrap();
     let bytes = fs::read(&output).unwrap();
@@ -57,6 +58,7 @@ fn aggregates_other_when_above_max_n() {
         output: output.clone(),
         max_n: 2,
         normalize: true,
+        events: None,
     };
     stack_plot(&opts).unwrap();
     let s = fs::read_to_string(&output).unwrap();

@@ -68,7 +68,10 @@ OUT=got-rs
 ./target/release/git-of-theseus-survival-plot-rs $OUT/survival.json --exp-fit --outfile survival.png
 ```
 
-All Rust plot binaries support both PNG and SVG output (chosen by file extension) and accept the same flags as their Python counterparts (`--outfile`, `--max-n`, `--normalize`, `--exp-fit`, `--years`). `--display` is currently a no-op.
+All Rust plot binaries support both PNG and SVG output (chosen by file extension)
+and accept the existing plot flags (`--outfile`, `--max-n`, `--normalize`,
+`--exp-fit`, `--years`). `--display` is currently a no-op. Python and Rust
+line and stack plot commands support the same optional `--events` manifest.
 
 Flags on `git-of-theseus-analyze-rs` mirror `git-of-theseus-analyze`. Some Python-only features (mailmap rewriting via `git check-mailmap`, the `--opt` commit-graph flag, and interactive SIGINT pause/resume) are not yet implemented in the Rust port; the Python CLI remains the reference implementation while the migration is in progress.
 
@@ -136,6 +139,86 @@ git-of-theseus-survival-plot <output-dir>/survival.json --exp-fit
 ```shell
 git-of-theseus-line-plot <output-dir>/authors.json --normalize
 ```
+
+### Add event markers
+
+Line and stack plots use calendar-time x axes. Add external event markers
+with a YAML manifest. Both Python and Rust commands accept the same file:
+
+```shell
+git-of-theseus-line-plot <output-dir>/authors.json \
+  --events examples/events.yaml --outfile authors-with-events.png
+git-of-theseus-stack-plot <output-dir>/cohorts.json \
+  --events examples/events.yaml --outfile cohorts-with-events.png
+git-of-theseus-line-plot-rs <output-dir>/authors.json \
+  --events examples/events.yaml --outfile authors-with-events.svg
+git-of-theseus-stack-plot-rs <output-dir>/cohorts.json \
+  --events examples/events.yaml --outfile cohorts-with-events.svg
+```
+
+Each marker has a number above the chart. The event key below the chart
+shows its date, provider, event type, label, and scope. Events on the same
+date keep separate numbers. Nearby numbers use separate rows to prevent
+overlap. Long key entries wrap, and the output height increases as needed.
+The data area and axis limits do not change.
+
+SVG files also have tooltips. Open the `.svg` file directly in a web
+browser. Hold the pointer over an event line, its number, or its key entry
+to see the full label, date, provider, model, event type, scope, source,
+and notes. Notes are omitted when empty. Sources are plain text; the plot
+does not open them or run scripts. Events on the same date share a line
+position, so use their separate numbers or key entries to inspect each one.
+PNG files keep the same static chart and key.
+
+To use a local manifest in PowerShell:
+
+```powershell
+uv run git-of-theseus-stack-plot .\got\cohorts.json `
+  --events "C:\path\to\model-releases.yaml" `
+  --outfile .\cohorts-with-events.png
+
+cargo run -p got-cli --bin git-of-theseus-stack-plot-rs -- `
+  .\got\cohorts.json --events "C:\path\to\model-releases.yaml" `
+  --outfile .\cohorts-with-events.svg
+```
+
+The manifest has `schema_version: 1` and an `events` list. Each event requires
+`date`, `provider`, `model`, `event`, `scope`, `label`, and `source`.
+Dates support ISO `YYYY-MM-DD` values and ISO timestamps; timezone-aware
+timestamps are converted to UTC before their calendar date is used. Valid
+event values are `announced`, `available`, `pilot`, `default`, and `retired`.
+Partial dates such as `2026-09` are rejected. Quote dates to keep them
+portable between YAML tools. The optional `notes` field must be a string.
+Extra fields, such as `window`, `coverage`, `limitations`, and per-event
+evidence, are allowed. The `window` field is metadata; it does not crop the
+plot. An omitted schema version defaults to 1.
+
+`provider` controls a stable line color, shared by Python and Rust.
+`event` controls the line style. The key also states the provider and
+event type, so it does not rely on color alone. Events outside the plot
+range are ignored and do not expand the axis. An empty manifest, or one
+with no events in range, leaves the plot unchanged. Invalid manifests
+produce an error before the output file is written.
+
+Event markers describe external dates only. `announced` and `available` do not
+mean that code used the model, and the chart makes no causal claim. Shaded
+intervals are not inferred from overlapping releases. The survival plot is
+not calendar-time data: its x axis is elapsed code age in years, so
+`--events` is rejected by both survival plot commands. The tools read the
+manifest locally. They do not fetch or verify the sources in it.
+
+Python callers can pass `events="model-releases.yaml"` to `line_plot` or
+`stack_plot`. Rust callers can set `events: Some(path)` in
+`LinePlotOptions` or `StackPlotOptions`. Omit `events` to keep the normal
+plot behavior.
+
+For low-level matplotlib use, pass the dictionary returned by
+`add_event_annotations` to `save_event_plot(figure, path, tooltips)`.
+This save helper adds the SVG tooltip metadata.
+
+Shared fixtures in `tests/fixtures` cover dates, same-day events, all event
+types, and out-of-range events. Run the tests with
+`uv run --extra dev pytest` and `cargo test --workspace --locked`.
 
 All commands accept `--help` for the full list of options.
 

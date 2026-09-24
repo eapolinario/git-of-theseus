@@ -30,6 +30,10 @@ struct Cli {
     #[arg(long, default_value_t = false)]
     normalize: bool,
 
+    /// YAML manifest of external calendar-time events.
+    #[arg(long)]
+    events: Option<PathBuf>,
+
     /// Input JSON file (e.g. cohorts.json, exts.json).
     input_fn: PathBuf,
 }
@@ -41,6 +45,7 @@ fn main() -> Result<()> {
         output: cli.outfile,
         max_n: cli.max_n,
         normalize: cli.normalize,
+        events: cli.events,
     };
     let path = stack_plot(&opts)?;
     println!("Writing output to {}", path.display());

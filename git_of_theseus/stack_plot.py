@@ -21,12 +21,19 @@ matplotlib.use("Agg")
 import argparse, dateutil.parser, json, numpy, sys
 from matplotlib import pyplot
 
+from .events import add_event_annotations, load_events, save_event_plot
 from .utils import generate_n_colors
 
 
 def stack_plot(
-    input_fn, display=False, outfile="stack_plot.png", max_n=20, normalize=False
+    input_fn,
+    display=False,
+    outfile="stack_plot.png",
+    max_n=20,
+    normalize=False,
+    events=None,
 ):
+    annotations = load_events(events) if events is not None else []
     data = json.load(open(input_fn))  # TODO do we support multiple arguments here?
     y = numpy.array(data["y"])
     if y.shape[0] > max_n:
@@ -51,8 +58,9 @@ def stack_plot(
     else:
         pyplot.ylabel("Lines of code")
     print("Writing output to %s" % outfile)
-    pyplot.savefig(outfile)
     pyplot.tight_layout()
+    tooltips = add_event_annotations(pyplot.gca(), annotations)
+    save_event_plot(pyplot.gcf(), outfile, tooltips)
     if display:
         pyplot.show()
 
@@ -75,10 +83,18 @@ def stack_plot_cmdline():
     parser.add_argument(
         "--normalize", action="store_true", help="Normalize the plot to 100%%"
     )
+    parser.add_argument(
+        "--events",
+        type=str,
+        help="YAML manifest of external calendar-time events",
+    )
     parser.add_argument("input_fn")
     kwargs = vars(parser.parse_args())
 
-    stack_plot(**kwargs)
+    try:
+        stack_plot(**kwargs)
+    except ValueError as exc:
+        parser.error(str(exc))
 
 
 if __name__ == "__main__":

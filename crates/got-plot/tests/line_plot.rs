@@ -27,6 +27,7 @@ fn writes_nonempty_png() {
         output: output.clone(),
         max_n: 20,
         normalize: false,
+        events: None,
     };
     let written = line_plot(&opts).unwrap();
     assert_eq!(written, output);
@@ -47,9 +48,39 @@ fn writes_svg() {
         output: output.clone(),
         max_n: 20,
         normalize: true,
+        events: None,
     };
     line_plot(&opts).unwrap();
     let bytes = fs::read(&output).unwrap();
     let head = std::str::from_utf8(&bytes[..bytes.len().min(200)]).unwrap_or("");
     assert!(head.contains("<svg"), "not an SVG: {head:?}");
+}
+
+#[test]
+fn no_events_keeps_the_original_full_canvas_background() {
+    let dir = tempdir().unwrap();
+    let input = write_fixture(dir.path());
+    let output = dir.path().join("out.svg");
+    let opts = LinePlotOptions {
+        input,
+        output: output.clone(),
+        max_n: 20,
+        normalize: false,
+        events: None,
+    };
+
+    line_plot(&opts).unwrap();
+    let svg = fs::read_to_string(&output).unwrap();
+    let first_rect = svg
+        .split_once("<rect")
+        .and_then(|(_, rest)| rest.split_once("/>"))
+        .map(|(rect, _)| rect)
+        .expect("SVG should contain a background rectangle");
+
+    assert!(
+        first_rect.contains("width=\"1920\"")
+            && first_rect.contains("height=\"1440\"")
+            && first_rect.contains("fill=\"#E5E5E5\""),
+        "the no-events canvas should keep the original gray background: {first_rect}"
+    );
 }
