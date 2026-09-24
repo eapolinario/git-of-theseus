@@ -25,16 +25,16 @@ analyze-rs-help:
     cargo run --release -p got-cli -- --help
 
 # Stack plot (Rust). Example: just stack-plot-rs got/cohorts.json cohorts.png
-stack-plot-rs FILE="got/cohorts.json" OUTFILE="stack_plot.png":
-    cargo run --release -p got-cli --bin git-of-theseus-stack-plot-rs -- {{ FILE }} --outfile {{ OUTFILE }}
+stack-plot-rs FILE="got/cohorts.json" OUTFILE="stack_plot.png" *ARGS:
+    cargo run --release -p got-cli --bin git-of-theseus-stack-plot-rs -- {{ FILE }} --outfile {{ OUTFILE }} {{ ARGS }}
 
 # Normalized stack plot (Rust)
-stack-plot-rs-normalized FILE="got/cohorts.json" OUTFILE="stack_plot_normalized.png":
-    cargo run --release -p got-cli --bin git-of-theseus-stack-plot-rs -- {{ FILE }} --normalize --outfile {{ OUTFILE }}
+stack-plot-rs-normalized FILE="got/cohorts.json" OUTFILE="stack_plot_normalized.png" *ARGS:
+    cargo run --release -p got-cli --bin git-of-theseus-stack-plot-rs -- {{ FILE }} --normalize --outfile {{ OUTFILE }} {{ ARGS }}
 
 # Line plot (Rust)
-line-plot-rs FILE="got/authors.json" OUTFILE="line_plot.png":
-    cargo run --release -p got-cli --bin git-of-theseus-line-plot-rs -- {{ FILE }} --outfile {{ OUTFILE }}
+line-plot-rs FILE="got/authors.json" OUTFILE="line_plot.png" *ARGS:
+    cargo run --release -p got-cli --bin git-of-theseus-line-plot-rs -- {{ FILE }} --outfile {{ OUTFILE }} {{ ARGS }}
 
 # Survival plot (Rust)
 survival-plot-rs FILE="got/survival.json" OUTFILE="survival_plot.png":
@@ -60,16 +60,16 @@ test-rs:
     cargo test --workspace
 
 # Stack plot from analysis output (FILE e.g. got/cohorts.json)
-stack-plot FILE="got/cohorts.json" OUTFILE="stack_plot.png":
-    uv run git-of-theseus-stack-plot {{ FILE }} --outfile {{ OUTFILE }}
+stack-plot FILE="got/cohorts.json" OUTFILE="stack_plot.png" *ARGS:
+    uv run git-of-theseus-stack-plot {{ FILE }} --outfile {{ OUTFILE }} {{ ARGS }}
 
 # Normalized stack plot
-stack-plot-normalized FILE="got/cohorts.json" OUTFILE="stack_plot_normalized.png":
-    uv run git-of-theseus-stack-plot {{ FILE }} --normalize --outfile {{ OUTFILE }}
+stack-plot-normalized FILE="got/cohorts.json" OUTFILE="stack_plot_normalized.png" *ARGS:
+    uv run git-of-theseus-stack-plot {{ FILE }} --normalize --outfile {{ OUTFILE }} {{ ARGS }}
 
 # Line plot from analysis output
-line-plot FILE="got/authors.json" OUTFILE="line_plot.png":
-    uv run git-of-theseus-line-plot {{ FILE }} --outfile {{ OUTFILE }}
+line-plot FILE="got/authors.json" OUTFILE="line_plot.png" *ARGS:
+    uv run git-of-theseus-line-plot {{ FILE }} --outfile {{ OUTFILE }} {{ ARGS }}
 
 # Survival plot from analysis output
 survival-plot FILE="got/survival.json" OUTFILE="survival_plot.png":
