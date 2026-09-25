@@ -16,6 +16,9 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, TimeZone, Utc};
@@ -33,6 +36,17 @@ pub const DEFAULT_INTERVAL_SECS: i64 = 7 * 24 * 60 * 60;
 
 /// Survival series for a single commit: `[[unix_ts, surviving_lines], ...]`.
 pub type SurvivalSeries = Vec<(i64, u64)>;
+
+/// Timing statistics for performance measurement.
+#[derive(Debug, Clone, Default)]
+pub struct TimingStats {
+    pub blame_time_us: Arc<AtomicU64>,
+    pub post_blame_time_us: Arc<AtomicU64>,
+    pub fastdiff_time_us: Arc<AtomicU64>,
+    pub tree_discovery_time_us: Arc<AtomicU64>,
+    pub commit_walk_time_us: Arc<AtomicU64>,
+    pub files_blamed: Arc<AtomicU64>,
+}
 
 /// User-facing parameters for `analyze`. Mirrors the keyword arguments of
 /// `git_of_theseus.analyze.analyze`.
@@ -53,6 +67,10 @@ pub struct AnalyzeOptions {
     /// of output files instead of one subdirectory per repository. Ignored
     /// when only one repository is given. See [`merge_results`].
     pub merge: bool,
+    /// Enable detailed timing measurements.
+    pub measure_time: bool,
+    /// Timing statistics (only populated if measure_time is true).
+    pub timing: TimingStats,
 }
 
 impl Default for AnalyzeOptions {
@@ -70,6 +88,8 @@ impl Default for AnalyzeOptions {
             quiet: false,
             outdir: PathBuf::from("."),
             merge: false,
+            measure_time: false,
+            timing: TimingStats::default(),
         }
     }
 }
@@ -440,6 +460,7 @@ fn analyze_in_memory_with_pool(
 
         // Fast-diff: collect entries to actually blame, subtracting
         // contributions from modified or deleted files.
+        let fastdiff_start = if options.measure_time { Some(Instant::now()) } else { None };
         let mut cur_file_hash: HashMap<String, Oid> = HashMap::new();
         let mut to_blame: Vec<TreeEntry> = Vec::new();
         for entry in &entries {
@@ -480,6 +501,11 @@ fn analyze_in_memory_with_pool(
         }
         last_file_hash = cur_file_hash;
 
+        if let Some(start) = fastdiff_start {
+            let elapsed_us = start.elapsed().as_micros() as u64;
+            options.timing.fastdiff_time_us.fetch_add(elapsed_us, Ordering::Relaxed);
+        }
+
         // Blame the changed files (in parallel).
         let blame_results = blame_files(
             pool,
@@ -489,12 +515,21 @@ fn analyze_in_memory_with_pool(
             &commit2cohort,
             options.ignore_whitespace,
             &progress,
+            &options.timing,
+            options.measure_time,
         )?;
+        
+        // Measure post-blame histogram aggregation
+        let agg_start = if options.measure_time { Some(Instant::now()) } else { None };
         for (path, hist) in blame_results {
             for (key, count) in &hist {
                 *cur_y.entry(key.clone()).or_insert(0) += *count;
             }
             last_file_y.insert(path, hist);
+        }
+        if let Some(start) = agg_start {
+            let elapsed_us = start.elapsed().as_micros() as u64;
+            options.timing.post_blame_time_us.fetch_add(elapsed_us, Ordering::Relaxed);
         }
 
         // Snapshot per-curve values for this sampled commit.
@@ -700,6 +735,8 @@ fn blame_files(
     commit2cohort: &HashMap<Oid, String>,
     ignore_whitespace: bool,
     progress: &ProgressBar,
+    timing: &TimingStats,
+    measure_time: bool,
 ) -> Result<Vec<(String, FileHistogram)>> {
     if entries.is_empty() {
         return Ok(Vec::new());
@@ -716,9 +753,9 @@ fn blame_files(
                     if ignore_whitespace {
                         opts.ignore_whitespace(true);
                     }
-                    let hist = blame_one(repo, entry, &mut opts, commit2cohort);
+                    let hist = blame_one(repo, entry, &mut opts, commit2cohort, timing, measure_time)?;
                     progress.inc(1);
-                    Ok((entry.path.clone(), hist.unwrap_or_default()))
+                    Ok((entry.path.clone(), hist))
                 },
             )
             .collect()
@@ -735,8 +772,19 @@ fn blame_one(
     entry: &TreeEntry,
     opts: &mut BlameOptions,
     commit2cohort: &HashMap<Oid, String>,
+    timing: &TimingStats,
+    measure_time: bool,
 ) -> Result<FileHistogram> {
+    // Measure time spent on blame (I/O)
+    let blame_start = if measure_time { Some(Instant::now()) } else { None };
     let blame = repo.blame_file(Path::new(&entry.path), Some(opts))?;
+    if let Some(start) = blame_start {
+        let elapsed_us = start.elapsed().as_micros() as u64;
+        timing.blame_time_us.fetch_add(elapsed_us, Ordering::Relaxed);
+    }
+
+    // Measure time spent on post-blame computation
+    let post_blame_start = if measure_time { Some(Instant::now()) } else { None };
     let mut h: FileHistogram = HashMap::new();
     for hunk in blame.iter() {
         let lines = hunk.lines_in_hunk() as u64;
@@ -771,6 +819,11 @@ fn blame_one(
                 .or_insert(0) += lines;
         }
     }
+    if let Some(start) = post_blame_start {
+        let elapsed_us = start.elapsed().as_micros() as u64;
+        timing.post_blame_time_us.fetch_add(elapsed_us, Ordering::Relaxed);
+    }
+    timing.files_blamed.fetch_add(1, Ordering::Relaxed);
     Ok(h)
 }
 

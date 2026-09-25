@@ -20,5 +20,5 @@ pub mod path_filter;
 
 pub use analyze::{
     analyze, analyze_in_memory, analyze_many, merge_results, write_outputs, AnalyzeOptions,
-    AnalyzeResult, SurvivalSeries, DEFAULT_INTERVAL_SECS,
+    AnalyzeResult, SurvivalSeries, TimingStats, DEFAULT_INTERVAL_SECS,
 };
