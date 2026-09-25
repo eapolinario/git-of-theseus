@@ -124,6 +124,9 @@ pub fn analyze_in_memory(options: &AnalyzeOptions) -> Result<AnalyzeResult> {
 
     let branch_oid = resolve_branch(&repo, &options.branch, options.quiet)?;
     let filter = PathFilter::new(&options.only, &options.ignore, options.all_filetypes)?;
+    // Built once and reused for both the parallel tree walk (step 3) and
+    // the parallel blame (step 4).
+    let pool = build_thread_pool(options.procs)?;
 
     // Step 1: walk every reachable commit on the branch, build cohort map
     // and the up-front `curve_key_tuples` for cohort / author / domain.
@@ -177,27 +180,24 @@ pub fn analyze_in_memory(options: &AnalyzeOptions) -> Result<AnalyzeResult> {
     sampled.reverse(); // chronological ascending
 
     // Step 3: for each sampled commit, walk the tree and collect blob
-    // entries that pass the path filter. Cache the entries; also build
-    // `ext_set` / `dir_set` for the curve keys.
+    // entries that pass the path filter (in parallel, one worker thread
+    // per sampled commit). Cache the entries; also build `ext_set` /
+    // `dir_set` for the curve keys.
     let mut ext_set: HashSet<String> = HashSet::new();
     let mut dir_set: HashSet<String> = HashSet::new();
-    let mut entries_per_commit: Vec<Vec<TreeEntry>> = Vec::with_capacity(sampled.len());
 
     let progress = make_bar(
         options.quiet,
         "Discovering entries",
         Some(sampled.len() as u64),
     );
-    for (oid, _) in &sampled {
-        let commit = repo.find_commit(*oid)?;
-        let tree = commit.tree()?;
-        let entries = collect_blob_entries(&repo, &tree, &filter)?;
-        for entry in &entries {
+    let mut entries_per_commit =
+        discover_entries(&pool, &options.repo_dir, &sampled, &filter, &progress)?;
+    for entries in &entries_per_commit {
+        for entry in entries {
             ext_set.insert(extension(&entry.path));
             dir_set.insert(top_dir(&entry.path));
         }
-        entries_per_commit.push(entries);
-        progress.inc(1);
     }
     progress.finish_and_clear();
 
@@ -251,8 +251,6 @@ pub fn analyze_in_memory(options: &AnalyzeOptions) -> Result<AnalyzeResult> {
         "Analyzing commits (blame)",
         Some(total_entries),
     );
-
-    let pool = build_thread_pool(options.procs)?;
 
     for (commit_idx, (commit_oid, commit_ts)) in sampled.iter().enumerate() {
         let entries = std::mem::take(&mut entries_per_commit[commit_idx]);
@@ -472,6 +470,40 @@ fn build_thread_pool(procs: usize) -> Result<rayon::ThreadPool> {
         .num_threads(n)
         .build()
         .map_err(|e| anyhow!("building thread pool: {e}"))
+}
+
+/// Walks the tree of each sampled commit in parallel and collects the blob
+/// entries that pass `filter`, returning one entry list per sampled commit
+/// in the same order as `sampled`. Each worker thread opens its own
+/// `git2::Repository` because `Repository` is not `Sync`.
+fn discover_entries(
+    pool: &rayon::ThreadPool,
+    repo_dir: &Path,
+    sampled: &[(Oid, i64)],
+    filter: &PathFilter,
+    progress: &ProgressBar,
+) -> Result<Vec<Vec<TreeEntry>>> {
+    let results: Vec<Result<Vec<TreeEntry>>> = pool.install(|| {
+        sampled
+            .par_iter()
+            .map_init(
+                || Repository::open(repo_dir).context("opening repo on worker"),
+                |repo_result, (oid, _)| -> Result<Vec<TreeEntry>> {
+                    let repo = repo_result.as_ref().map_err(|e| anyhow!("{e}"))?;
+                    let commit = repo.find_commit(*oid)?;
+                    let tree = commit.tree()?;
+                    let entries = collect_blob_entries(repo, &tree, filter)?;
+                    progress.inc(1);
+                    Ok(entries)
+                },
+            )
+            .collect()
+    });
+    let mut out = Vec::with_capacity(results.len());
+    for r in results {
+        out.push(r?);
+    }
+    Ok(out)
 }
 
 /// Blames each entry at `commit_oid` and returns `(path, histogram)` pairs.
