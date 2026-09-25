@@ -5,103 +5,62 @@
 default:
     @just --list
 
-# Install the project and its dependencies into a uv-managed venv
-install:
-    uv sync
-
-# Analyze a git repository (REPO is required, e.g. just analyze REPO=../myrepo)
-analyze REPO OUTDIR="got":
-    uv run git-of-theseus-analyze {{ REPO }} --outdir {{ OUTDIR }}
-
-# Analyze a git repository using the Rust CLI.
-# All flags are forwarded to the binary; see `just analyze-rs-help` for options.
+# Analyze a git repository.
+# All flags are forwarded to the binary; see `just analyze-help` for options.
 # Example:
-#   just analyze-rs ../myrepo --branch main --quiet --ignore '*.lock'
-analyze-rs *ARGS:
-    cargo run --release -p got-cli -- {{ ARGS }}
+#   just analyze ../myrepo --branch main --quiet --ignore '*.lock'
+analyze *ARGS:
+    cargo run --release -p got-cli --bin git-of-theseus-analyze -- {{ ARGS }}
 
-# Show the Rust analyzer's help.
-analyze-rs-help:
-    cargo run --release -p got-cli -- --help
+# Show the analyzer's help.
+analyze-help:
+    cargo run --release -p got-cli --bin git-of-theseus-analyze -- --help
 
-# Stack plot (Rust). Example: just stack-plot-rs got/cohorts.json cohorts.png
-stack-plot-rs FILE="got/cohorts.json" OUTFILE="stack_plot.png" *ARGS:
-    cargo run --release -p got-cli --bin git-of-theseus-stack-plot -- {{ FILE }} --outfile {{ OUTFILE }} {{ ARGS }}
-
-# Normalized stack plot (Rust)
-stack-plot-rs-normalized FILE="got/cohorts.json" OUTFILE="stack_plot_normalized.png" *ARGS:
-    cargo run --release -p got-cli --bin git-of-theseus-stack-plot -- {{ FILE }} --normalize --outfile {{ OUTFILE }} {{ ARGS }}
-
-# Line plot (Rust)
-line-plot-rs FILE="got/authors.json" OUTFILE="line_plot.png" *ARGS:
-    cargo run --release -p got-cli --bin git-of-theseus-line-plot -- {{ FILE }} --outfile {{ OUTFILE }} {{ ARGS }}
-
-# Survival plot (Rust)
-survival-plot-rs FILE="got/survival.json" OUTFILE="survival_plot.png":
-    cargo run --release -p got-cli --bin git-of-theseus-survival-plot -- {{ FILE }} --outfile {{ OUTFILE }}
-
-# Survival plot with exponential fit (Rust)
-survival-plot-rs-expfit FILE="got/survival.json" OUTFILE="survival_plot_expfit.png":
-    cargo run --release -p got-cli --bin git-of-theseus-survival-plot -- {{ FILE }} --exp-fit --outfile {{ OUTFILE }}
-
-# Run the full Rust pipeline on a repo and generate all charts.
-all-rs REPO OUTDIR="got-rs":
-    cargo run --release -p got-cli --bin git-of-theseus-analyze -- {{ REPO }} --outdir {{ OUTDIR }}
-    just stack-plot-rs {{ OUTDIR }}/cohorts.json cohorts-rs.png
-    just stack-plot-rs-normalized {{ OUTDIR }}/cohorts.json cohorts-rs-normalized.png
-    just line-plot-rs {{ OUTDIR }}/authors.json authors-rs.png
-    just survival-plot-rs {{ OUTDIR }}/survival.json survival-rs.png
-    just survival-plot-rs-expfit {{ OUTDIR }}/survival.json survival-rs-expfit.png
-
-# Run the Rust workspace test suite.
-test-rs:
-    cargo fmt --check
-    cargo clippy --workspace --all-targets -- -D warnings
-    cargo test --workspace
-
-# Stack plot from analysis output (FILE e.g. got/cohorts.json)
+# Stack plot. Example: just stack-plot got/cohorts.json cohorts.png
 stack-plot FILE="got/cohorts.json" OUTFILE="stack_plot.png" *ARGS:
-    uv run git-of-theseus-stack-plot {{ FILE }} --outfile {{ OUTFILE }} {{ ARGS }}
+    cargo run --release -p got-cli --bin git-of-theseus-stack-plot -- {{ FILE }} --outfile {{ OUTFILE }} {{ ARGS }}
 
 # Normalized stack plot
 stack-plot-normalized FILE="got/cohorts.json" OUTFILE="stack_plot_normalized.png" *ARGS:
-    uv run git-of-theseus-stack-plot {{ FILE }} --normalize --outfile {{ OUTFILE }} {{ ARGS }}
+    cargo run --release -p got-cli --bin git-of-theseus-stack-plot -- {{ FILE }} --normalize --outfile {{ OUTFILE }} {{ ARGS }}
 
-# Line plot from analysis output
+# Line plot
 line-plot FILE="got/authors.json" OUTFILE="line_plot.png" *ARGS:
-    uv run git-of-theseus-line-plot {{ FILE }} --outfile {{ OUTFILE }} {{ ARGS }}
+    cargo run --release -p got-cli --bin git-of-theseus-line-plot -- {{ FILE }} --outfile {{ OUTFILE }} {{ ARGS }}
 
-# Survival plot from analysis output
+# Survival plot
 survival-plot FILE="got/survival.json" OUTFILE="survival_plot.png":
-    uv run git-of-theseus-survival-plot {{ FILE }} --outfile {{ OUTFILE }}
+    cargo run --release -p got-cli --bin git-of-theseus-survival-plot -- {{ FILE }} --outfile {{ OUTFILE }}
 
 # Survival plot with exponential fit
 survival-plot-expfit FILE="got/survival.json" OUTFILE="survival_plot_expfit.png":
-    uv run git-of-theseus-survival-plot {{ FILE }} --exp-fit --outfile {{ OUTFILE }}
+    cargo run --release -p got-cli --bin git-of-theseus-survival-plot -- {{ FILE }} --exp-fit --outfile {{ OUTFILE }}
 
-# Run the full pipeline on a repo and generate all charts
+# Run the full pipeline on a repo and generate all charts.
 all REPO OUTDIR="got":
-    just analyze {{ REPO }} {{ OUTDIR }}
+    cargo run --release -p got-cli --bin git-of-theseus-analyze -- {{ REPO }} --outdir {{ OUTDIR }}
     just stack-plot {{ OUTDIR }}/cohorts.json cohorts.png
     just stack-plot-normalized {{ OUTDIR }}/cohorts.json cohorts_normalized.png
     just line-plot {{ OUTDIR }}/authors.json authors.png
     just survival-plot {{ OUTDIR }}/survival.json survival.png
     just survival-plot-expfit {{ OUTDIR }}/survival.json survival_expfit.png
 
-# Run unit tests
+# Run the Rust workspace unit test suite.
 unit-test:
-    uv run --extra dev pytest
+    cargo fmt --check
+    cargo clippy --workspace --all-targets -- -D warnings
+    cargo test --workspace
 
 # Run the CI test suite against the current repository
 test: unit-test
-    uv run git-of-theseus-analyze . --outdir got
-    uv run git-of-theseus-stack-plot got/cohorts.json
-    uv run git-of-theseus-stack-plot got/cohorts.json --normalize
-    uv run git-of-theseus-stack-plot got/exts.json
-    uv run git-of-theseus-stack-plot got/authors.json
-    uv run git-of-theseus-line-plot got/authors.json
-    uv run git-of-theseus-line-plot got/dirs.json
-    uv run git-of-theseus-survival-plot got/survival.json --exp-fit
-    uv run git-of-theseus-analyze --help
-    uv run git-of-theseus-stack-plot --help
-    uv run git-of-theseus-survival-plot --help
+    cargo run --release -p got-cli --bin git-of-theseus-analyze -- . --outdir got
+    cargo run --release -p got-cli --bin git-of-theseus-stack-plot -- got/cohorts.json --outfile got/cohorts.png
+    cargo run --release -p got-cli --bin git-of-theseus-stack-plot -- got/cohorts.json --normalize --outfile got/cohorts_normalized.png
+    cargo run --release -p got-cli --bin git-of-theseus-stack-plot -- got/exts.json --outfile got/exts.png
+    cargo run --release -p got-cli --bin git-of-theseus-stack-plot -- got/authors.json --outfile got/authors.png
+    cargo run --release -p got-cli --bin git-of-theseus-line-plot -- got/authors.json --outfile got/authors_line.png
+    cargo run --release -p got-cli --bin git-of-theseus-line-plot -- got/dirs.json --outfile got/dirs.png
+    cargo run --release -p got-cli --bin git-of-theseus-survival-plot -- got/survival.json --exp-fit --outfile got/survival.png
+    cargo run --release -p got-cli --bin git-of-theseus-analyze -- --help
+    cargo run --release -p got-cli --bin git-of-theseus-stack-plot -- --help
+    cargo run --release -p got-cli --bin git-of-theseus-survival-plot -- --help

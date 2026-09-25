@@ -78,28 +78,6 @@
           '';
         };
 
-        # Python package
-        packages.default = pkgs.python3Packages.buildPythonPackage {
-          pname = "git-of-theseus";
-          version = "0.3.4";
-          src = ./.;
-          pyproject = true;
-
-          build-system = with pkgs.python3Packages; [ hatchling ];
-
-          propagatedBuildInputs = with pkgs.python3Packages; [
-            gitpython
-            matplotlib
-            numpy
-            pygments
-            pkgs.python3Packages."python-dateutil"
-            pyyaml
-            scipy
-            tqdm
-            wcmatch
-          ];
-        };
-
         # Rust CLI: `nix build .#got-cli`
         packages.got-cli = pkgs.rustPlatform.buildRustPackage {
           pname = "got-cli";
@@ -120,6 +98,9 @@
           cargoBuildFlags = [ "-p" "got-cli" ];
           cargoTestFlags = [ "--workspace" ];
         };
+
+        # `nix build` -> builds the Rust CLI
+        packages.default = self.packages.${system}.got-cli;
 
         # `nix run .#analyze-rs` -> runs the Rust analyzer
         apps.analyze-rs = {

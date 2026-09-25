@@ -122,7 +122,7 @@ jobs:
           ./target/release/git-of-theseus-stack-plot got-rs/cohorts.json --normalize --outfile got-rs/cohorts-norm.png
           ./target/release/git-of-theseus-stack-plot got-rs/exts.json --outfile got-rs/exts.png
           ./target/release/git-of-theseus-stack-plot got-rs/authors.json --outfile got-rs/authors.png
-          ./target/release/git-of-theseus-line-plot got-rs/authors.json --outfile got-rs/authors.png
+          ./target/release/git-of-theseus-line-plot got-rs/authors.json --outfile got-rs/authors-line.png
           ./target/release/git-of-theseus-line-plot got-rs/dirs.json --outfile got-rs/dirs.png
           ./target/release/git-of-theseus-stack-plot got-rs/cohorts.json --events examples/events.yaml --outfile got-rs/cohorts-events.png
           ./target/release/git-of-theseus-line-plot got-rs/authors.json --events examples/events.yaml --outfile got-rs/authors-events.svg

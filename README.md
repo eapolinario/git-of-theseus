@@ -78,7 +78,7 @@ OUT=got-rs
 ./target/release/git-of-theseus-survival-plot $OUT/survival.json --exp-fit --outfile survival.png
 ```
 
-Analyzing multiple repositories and overlaying their plots works the same way as the Python CLIs:
+Analyzing multiple repositories and overlaying their plots works the same way:
 
 ```shell
 ./target/release/git-of-theseus-analyze repo-one repo-two --outdir got-rs
@@ -87,8 +87,7 @@ Analyzing multiple repositories and overlaying their plots works the same way as
 ./target/release/git-of-theseus-survival-plot got-rs/repo-one/survival.json got-rs/repo-two/survival.json --outfile survival.svg
 ```
 
-`git-of-theseus-analyze` additionally supports `--merge` (Rust-only, no
-Python equivalent): instead of one output subdirectory per repository, it
+`git-of-theseus-analyze` additionally supports `--merge`: instead of one output subdirectory per repository, it
 combines every repository into a single set of output files written
 directly to `--outdir`. Series for a label shared across repositories
 (the same author, extension, cohort, directory, or domain) are aligned
@@ -102,10 +101,17 @@ repositories were one project:
 
 All Rust plot binaries support both PNG and SVG output (chosen by file extension)
 and accept the existing plot flags (`--outfile`, `--max-n`, `--normalize`,
-`--exp-fit`, `--years`). `--display` is currently a no-op. Python and Rust
+`--exp-fit`, `--years`). `--display` is currently a no-op. The Rust
 line and stack plot commands support the same optional `--events` manifest.
 
-Flags on `git-of-theseus-analyze` mirror `git-of-theseus-analyze`. Some Python-only features (mailmap rewriting via `git check-mailmap`, the `--opt` commit-graph flag, and interactive SIGINT pause/resume) are not yet implemented in the Rust port; the Python CLI remains the reference implementation while the migration is in progress. `--merge` is the reverse case: a Rust-only addition with no Python equivalent yet.
+The Rust CLI is now the only shipped implementation; the Python package has
+been removed. A handful of features from the former Python CLI are not yet
+implemented in Rust and are documented below as a breaking change rather than
+a gap versus a still-available reference implementation: mailmap rewriting
+via `git check-mailmap`, the `--opt` commit-graph flag, and interactive
+SIGINT pause/resume. Invocations that relied on those flags will now fail;
+see the deferred-features checklist below for tracking. `--merge` is the
+reverse case: a Rust-only addition that had no Python equivalent.
 
 ##### Rust port — TODO
 
@@ -142,13 +148,13 @@ The Rust port is being delivered incrementally. Tracked work:
 - [ ] Wire `--display` to actually open the rendered file (e.g. via the `open` crate / `xdg-open`); currently a no-op that prints a hint
 - [ ] Visual-regression snapshot tests for the rendered PNGs (golden-file diff with a small tolerance) once the rendering style stabilizes
 - [ ] Investigate visual parity with matplotlib's `ggplot` style: tick density, axis label font size, legend placement
-- [ ] Decide whether to keep the Python plot scripts or deprecate them once Rust parity is reached
+- [x] Deprecate and remove the Python plot scripts now that Rust parity is reached
 
 **Part 4 — Cutover**
-- [ ] Rename `git-of-theseus-analyze` → `git-of-theseus-analyze` once feature parity and a release strategy are agreed
+- [x] Rename `git-of-theseus-analyze-rs` → `git-of-theseus-analyze` now that the Rust CLI ships under the original command names
 - [ ] Ship pre-built binaries (release workflow + GitHub Releases)
-- [ ] Update `Dockerfile`, `flake.nix`, `Justfile`, and the existing CI matrix accordingly
-- [ ] Remove the Python `analyze.py` (and possibly the rest of the Python package) after a deprecation window
+- [x] Update `Dockerfile`, `flake.nix`, `Justfile`, and the existing CI matrix accordingly
+- [x] Remove the Python `analyze.py` (and the rest of the Python package)
 
 
 ### Step 2 — Generate plots
@@ -177,7 +183,7 @@ git-of-theseus-line-plot <output-dir>/authors.json --normalize
 ### Add event markers
 
 Line and stack plots use calendar-time x axes. Add external event markers
-with a YAML manifest. Both Python and Rust commands accept the same file:
+with a YAML manifest:
 
 ```shell
 git-of-theseus-line-plot <output-dir>/authors.json \
@@ -207,10 +213,6 @@ PNG files keep the same static chart and key.
 To use a local manifest in PowerShell:
 
 ```powershell
-uv run git-of-theseus-stack-plot .\got\cohorts.json `
-  --events "C:\path\to\model-releases.yaml" `
-  --outfile .\cohorts-with-events.png
-
 cargo run -p got-cli --bin git-of-theseus-stack-plot -- `
   .\got\cohorts.json --events "C:\path\to\model-releases.yaml" `
   --outfile .\cohorts-with-events.svg
@@ -227,7 +229,7 @@ Extra fields, such as `window`, `coverage`, `limitations`, and per-event
 evidence, are allowed. The `window` field is metadata; it does not crop the
 plot. An omitted schema version defaults to 1.
 
-`provider` controls a stable line color, shared by Python and Rust.
+`provider` controls a stable line color.
 `event` controls the line style. The key also states the provider and
 event type, so it does not rely on color alone. Events outside the plot
 range are ignored and do not expand the axis. An empty manifest, or one
@@ -241,18 +243,12 @@ not calendar-time data: its x axis is elapsed code age in years, so
 `--events` is rejected by both survival plot commands. The tools read the
 manifest locally. They do not fetch or verify the sources in it.
 
-Python callers can pass `events="model-releases.yaml"` to `line_plot` or
-`stack_plot`. Rust callers can set `events: Some(path)` in
-`LinePlotOptions` or `StackPlotOptions`. Omit `events` to keep the normal
-plot behavior.
-
-For low-level matplotlib use, pass the dictionary returned by
-`add_event_annotations` to `save_event_plot(figure, path, tooltips)`.
-This save helper adds the SVG tooltip metadata.
+Rust callers can set `events: Some(path)` in `LinePlotOptions` or
+`StackPlotOptions`. Omit `events` to keep the normal plot behavior.
 
 Shared fixtures in `tests/fixtures` cover dates, same-day events, all event
 types, and out-of-range events. Run the tests with
-`uv run --extra dev pytest` and `cargo test --workspace --locked`.
+`cargo test --workspace --locked`.
 
 All commands accept `--help` for the full list of options.
 
@@ -321,13 +317,6 @@ git log --pretty=format:"%an %ae" | sort | uniq
 **Windows PowerShell**
 ```powershell
 git log --pretty=format:"%an %ae" | Sort-Object | Select-Object -Unique
-```
-
-## Troubleshooting
-
-**`AttributeError: Unknown property labels`** — upgrade matplotlib:
-```shell
-pip install matplotlib --upgrade
 ```
 
 ## Related Projects
