@@ -163,14 +163,16 @@ git-of-theseus-analyze-rs --procs 64 --outdir output repo
 2. If file unchanged since last commit, reuse previous blame result
 3. Fast-diff already detects unchanged files — use that to skip blame
 
-**Current fast-diff logic:**
+**Current fast-diff logic** (`plan_commits()`):
 ```rust
-match last_file_hash.get(&entry.path) {
-    Some(prev_oid) if *prev_oid == entry.blob_oid => {
-        // Identical file: nothing to do.
-        progress.inc(1);  // ← Already skips blame!
+match last_file_hash.remove(&entry.path) {
+    // Identical file: nothing to do.
+    Some(previous_oid) if previous_oid == entry.blob_oid => progress.inc(1), // ← Already skips blame!
+    Some(_) => {
+        paths_to_remove.push(entry.path.clone());
+        to_blame.push(entry);
     }
-    // ...
+    None => to_blame.push(entry),
 }
 ```
 
@@ -239,9 +241,9 @@ show little or no improvement. Report measured speedup only.
 
 **Current code:**
 ```rust
-fn blame_files(..., entries: &[TreeEntry], ...) {
-    entries.par_iter().map(|entry| {
-        repo.blame_file(...)  // ← One blame per file, sequentially
+fn blame_commit_window(..., plans: &[CommitPlan], ...) {
+    tasks.par_iter().map_init(open_repo, |repo, (plan_idx, commit_oid, entry)| {
+        blame_one(repo, entry, ...)  // ← One repo.blame_file() per file
     })
 }
 ```
@@ -277,7 +279,7 @@ for entry in entries {
 
 **Estimated effort:** 8–12 hours
 
-**Code location:** `crates/got-core/src/analyze.rs`, function `blame_files()`
+**Code location:** `crates/got-core/src/analyze.rs`, functions `blame_commit_window()` and `blame_one()`
 
 ---
 

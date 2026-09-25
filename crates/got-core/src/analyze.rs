@@ -812,7 +812,10 @@ fn blame_commit_window(
             .map_init(
                 || Repository::open(repo_dir).context("opening repo on worker"),
                 |repo_result, (plan_idx, commit_oid, entry)| {
-                    let repo = repo_result.as_ref().map_err(|e| anyhow!("{e}"))?;
+                    let repo = repo_result.as_ref().map_err(|e| {
+                        anyhow!("{e:#}")
+                            .context(format!("blaming {} at commit {}", entry.path, commit_oid))
+                    })?;
                     let mut opts = BlameOptions::new();
                     opts.newest_commit(*commit_oid);
                     if ignore_whitespace {
