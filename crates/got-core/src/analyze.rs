@@ -769,9 +769,9 @@ fn blame_files(
                         opts.ignore_whitespace(true);
                     }
                     let hist =
-                        blame_one(repo, entry, &mut opts, commit2cohort, timing, measure_time)?;
+                        blame_one(repo, entry, &mut opts, commit2cohort, timing, measure_time);
                     progress.inc(1);
-                    Ok((entry.path.clone(), hist))
+                    Ok((entry.path.clone(), hist.unwrap_or_default()))
                 },
             )
             .collect()
