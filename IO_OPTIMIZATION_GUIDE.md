@@ -205,24 +205,31 @@ For each sampled commit:
   4. Move to next commit
 ```
 
-**Optimization:** Queue blame operations ahead of fast-diff:
+**Optimization:** Separate ordered fast-diff planning from blame execution:
 
 ```
-For sampled commit N:
-  1. Fast-diff: Detect changed files
-  2. Queue blame for commit N
-  
-For sampled commit N+1:
-  1. Queue blame for commit N (if not done)
-  2. Fast-diff for commit N+1
-  3. While blaming N+1, prefetch object database for N+2
+1. Walk sampled commits in order and create a plan for each commit:
+   - files to blame
+   - modified or deleted paths to remove from cumulative state
+2. Process a bounded window of commit plans with Rayon.
+3. Group results by commit.
+4. Apply only complete commits, in sampled order.
 ```
 
-**Benefit:** Hide I/O latency by overlapping blame wait time with other work.
+**Why ordering matters:** `cur_y` and `last_file_y` are cumulative. Applying
+results in worker completion order changes later fast-diff state and corrupts
+the output curves.
 
-**Implementation complexity:** Medium (requires thread coordination)
+**Benefit:** Blame work from adjacent commits can use idle workers when one
+commit has fewer changed files than the Rayon pool. A bounded window limits
+result memory.
 
-**Estimated effort:** 4–6 hours
+**Limit:** This does not reduce the total blame work. Repositories where each
+sampled commit already has enough changed files to fill the worker pool may
+show little or no improvement. Report measured speedup only.
+
+**Implementation:** `crates/got-core/src/analyze.rs`, `plan_commits()` and
+`blame_commit_window()`.
 
 ---
 

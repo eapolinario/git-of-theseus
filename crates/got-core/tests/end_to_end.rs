@@ -278,3 +278,76 @@ fn analyze_many_merge_sums_overlapping_labels_across_repositories() {
     assert!(!outdir.join("repo-a").exists());
     assert!(!outdir.join("repo-b").exists());
 }
+
+#[test]
+fn pipelined_analysis_matches_single_commit_windows() {
+    let dir = tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    run(&repo, &["init", "-q", "-b", "main"]);
+    run(&repo, &["config", "commit.gpgsign", "false"]);
+
+    fs::write(repo.join("a.py"), "a = 1\n").unwrap();
+    fs::write(repo.join("deleted.py"), "old = 1\n").unwrap();
+    run(&repo, &["add", "."]);
+    run_with_date(
+        &repo,
+        "2020-01-01T00:00:00Z",
+        &["commit", "-q", "-m", "first"],
+    );
+
+    fs::write(repo.join("a.py"), "a = 2\nb = 1\n").unwrap();
+    fs::write(repo.join("b.rs"), "fn main() {}\n").unwrap();
+    run(&repo, &["add", "."]);
+    run_with_date(
+        &repo,
+        "2020-02-01T00:00:00Z",
+        &["commit", "-q", "-m", "second"],
+    );
+
+    fs::remove_file(repo.join("deleted.py")).unwrap();
+    fs::write(repo.join("a.py"), "a = 3\nb = 1\nc = 1\n").unwrap();
+    run(&repo, &["add", "-A"]);
+    run_with_date(
+        &repo,
+        "2020-03-01T00:00:00Z",
+        &["commit", "-q", "-m", "third"],
+    );
+
+    let sequential_out = dir.path().join("sequential");
+    analyze(&AnalyzeOptions {
+        repo_dir: repo.clone(),
+        branch: "main".into(),
+        outdir: sequential_out.clone(),
+        quiet: true,
+        procs: 1,
+        ..Default::default()
+    })
+    .unwrap();
+
+    let pipelined_out = dir.path().join("pipelined");
+    analyze(&AnalyzeOptions {
+        repo_dir: repo,
+        branch: "main".into(),
+        outdir: pipelined_out.clone(),
+        quiet: true,
+        procs: 4,
+        ..Default::default()
+    })
+    .unwrap();
+
+    for file in [
+        "cohorts.json",
+        "exts.json",
+        "authors.json",
+        "dirs.json",
+        "domains.json",
+        "survival.json",
+    ] {
+        assert_eq!(
+            fs::read(sequential_out.join(file)).unwrap(),
+            fs::read(pipelined_out.join(file)).unwrap(),
+            "{file} changed with pipeline width"
+        );
+    }
+}
