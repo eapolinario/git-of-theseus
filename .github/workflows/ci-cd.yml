@@ -10,45 +10,6 @@ env:
   DISPLAY: ":99.0"
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
-    name: Tests on Python ${{ matrix.python-version }}
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: Install Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install package
-        run: pip install ".[dev]"
-
-      - name: Run unit and plot CLI tests
-        run: python -m pytest -q
-
-      - name: Run tests
-        run: |
-          git-of-theseus-analyze . --outdir got
-          git-of-theseus-stack-plot got/cohorts.json
-          git-of-theseus-stack-plot got/cohorts.json --normalize
-          git-of-theseus-stack-plot got/exts.json
-          git-of-theseus-stack-plot got/authors.json
-          git-of-theseus-line-plot got/authors.json
-          git-of-theseus-line-plot got/dirs.json
-          git-of-theseus-stack-plot got/cohorts.json --events examples/events.yaml --outfile got/cohorts-events.png
-          git-of-theseus-line-plot got/authors.json --events examples/events.yaml --outfile got/authors-events.svg
-          git-of-theseus-survival-plot got/survival.json --exp-fit
-          git-of-theseus-analyze --help
-          git-of-theseus-stack-plot --help
-          git-of-theseus-survival-plot --help
-
   test-docker:
     runs-on: ubuntu-latest
     name: Build and test Docker image
@@ -155,13 +116,14 @@ jobs:
           print('json ok')
           PY
 
-      - name: Verify Python plot scripts can consume Rust JSON
+      - name: Run all Rust plotting CLIs
         run: |
-          pip install .
-          export MPLBACKEND=Agg
-          git-of-theseus-stack-plot got-rs/cohorts.json --outfile got-rs/cohorts.png
-          git-of-theseus-line-plot got-rs/authors.json --outfile got-rs/authors.png
-          git-of-theseus-survival-plot got-rs/survival.json --exp-fit --outfile got-rs/survival.png
-          git-of-theseus-stack-plot got-rs/cohorts.json --events examples/events.yaml --outfile got-rs/python-events.png
-          ./target/release/git-of-theseus-stack-plot-rs got-rs/cohorts.json --events examples/events.yaml --outfile got-rs/rust-events.png
-          ./target/release/git-of-theseus-line-plot-rs got-rs/authors.json --events examples/events.yaml --outfile got-rs/rust-events.svg
+          ./target/release/git-of-theseus-stack-plot-rs got-rs/cohorts.json --outfile got-rs/cohorts.png
+          ./target/release/git-of-theseus-stack-plot-rs got-rs/cohorts.json --normalize --outfile got-rs/cohorts-norm.png
+          ./target/release/git-of-theseus-stack-plot-rs got-rs/exts.json --outfile got-rs/exts.png
+          ./target/release/git-of-theseus-stack-plot-rs got-rs/authors.json --outfile got-rs/authors.png
+          ./target/release/git-of-theseus-line-plot-rs got-rs/authors.json --outfile got-rs/authors.png
+          ./target/release/git-of-theseus-line-plot-rs got-rs/dirs.json --outfile got-rs/dirs.png
+          ./target/release/git-of-theseus-stack-plot-rs got-rs/cohorts.json --events examples/events.yaml --outfile got-rs/cohorts-events.png
+          ./target/release/git-of-theseus-line-plot-rs got-rs/authors.json --events examples/events.yaml --outfile got-rs/authors-events.svg
+          ./target/release/git-of-theseus-survival-plot-rs got-rs/survival.json --exp-fit --outfile got-rs/survival.png

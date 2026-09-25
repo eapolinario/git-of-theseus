@@ -10,18 +10,18 @@ Here's an example running it on this very repository — code broken down by the
 
 ## Installation
 
-This is a fork of the original [git-of-theseus](https://github.com/erikbern/git-of-theseus) project. Install directly from this repository:
-
-```shell
-pip install git+https://github.com/eapolinario/git-of-theseus.git
-```
-
-Or clone and install with [uv](https://github.com/astral-sh/uv):
+Clone the repository and build with Cargo:
 
 ```shell
 git clone https://github.com/eapolinario/git-of-theseus.git
 cd git-of-theseus
-uv sync
+cargo build --release
+```
+
+Executables will be in `target/release/`. Add that directory to your `$PATH`, or run them directly:
+
+```shell
+./target/release/git-of-theseus-analyze-rs --help
 ```
 
 ## Usage
@@ -29,7 +29,7 @@ uv sync
 ### Step 1 — Analyze a repository
 
 ```shell
-git-of-theseus-analyze <path-to-repo> --outdir <output-dir>
+git-of-theseus-analyze-rs <path-to-repo> --outdir <output-dir>
 ```
 
 This writes several JSON files to `<output-dir>`:
@@ -40,44 +40,32 @@ This writes several JSON files to `<output-dir>`:
 | `authors.json` | Lines of code grouped by author |
 | `exts.json` | Lines of code grouped by file extension |
 | `dirs.json` | Lines of code grouped by top-level directory |
+| `domains.json` | Lines of code grouped by author email domain |
 | `survival.json` | Data for survival curve estimation |
 
-Analysis can take a while on large repos. Run `git-of-theseus-analyze --help` for all options including `--interval`, `--branch`, `--ignore`, and `--only`.
+Analysis can take a while on large repos. Run `git-of-theseus-analyze-rs --help` for all options including `--interval`, `--branch`, `--ignore`, and `--only`.
 
 ### Analyzing multiple repositories
 
 Pass two or more repository paths to analyze them in one run:
 
 ```shell
-git-of-theseus-analyze repo-one repo-two --outdir got
+git-of-theseus-analyze-rs repo-one repo-two --outdir got
 ```
 
 Each repository writes the normal JSON files to a named subdirectory:
 `got/repo-one/cohorts.json`, `got/repo-two/cohorts.json`, and so on. If two
 repositories have the same directory name, a numeric suffix is added.
 
-Line, stack, and survival plots accept multiple input files. Line and stack
-plots align repository timelines, carry values forward between samples, and
-prefix labels with the repository directory name:
+### Plotting
+
+The Rust implementation includes the full pipeline — analyze + line/stack/survival plots. Line, stack, and survival plots accept multiple input files. Line and stack plots align repository timelines, carry values forward between samples, and prefix labels with the repository directory name:
 
 ```shell
-git-of-theseus-line-plot got/repo-one/authors.json got/repo-two/authors.json
-git-of-theseus-stack-plot got/repo-one/cohorts.json got/repo-two/cohorts.json
-git-of-theseus-survival-plot got/repo-one/survival.json got/repo-two/survival.json
+git-of-theseus-line-plot-rs got/repo-one/authors.json got/repo-two/authors.json
+git-of-theseus-stack-plot-rs got/repo-one/cohorts.json got/repo-two/cohorts.json
+git-of-theseus-survival-plot-rs got/repo-one/survival.json got/repo-two/survival.json
 ```
-
-#### Faster analysis with the Rust port (experimental)
-
-A Rust reimplementation is being developed in this repository under `crates/got-core`, `crates/got-cli`, and `crates/got-plot`. It uses [libgit2](https://libgit2.org/) directly and runs significantly faster than the Python version on large histories. The full pipeline — analyze + line/stack/survival plots — is available in Rust:
-
-| Python CLI | Rust CLI |
-|---|---|
-| `git-of-theseus-analyze` | `git-of-theseus-analyze-rs` |
-| `git-of-theseus-line-plot` | `git-of-theseus-line-plot-rs` |
-| `git-of-theseus-stack-plot` | `git-of-theseus-stack-plot-rs` |
-| `git-of-theseus-survival-plot` | `git-of-theseus-survival-plot-rs` |
-
-The Rust analyzer writes the same JSON schema as Python, so you can mix and match — e.g. analyze with Rust and plot with Python, or vice versa. The Rust CLIs support the same multi-repository input as their Python counterparts: pass several repository paths to `git-of-theseus-analyze-rs`, and several JSON files to the Rust line/stack/survival plot binaries.
 
 Build and run end-to-end:
 
