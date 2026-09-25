@@ -100,7 +100,7 @@ fn main() -> Result<()> {
         timing: Default::default(),
     };
     analyze_many(&cli.repo_dir, &options)?;
-    
+
     if cli.measure_time {
         print_timing_stats(&options.timing);
     }
@@ -108,33 +108,77 @@ fn main() -> Result<()> {
 }
 
 fn print_timing_stats(timing: &got_core::analyze::TimingStats) {
-    let blame_us = timing.blame_time_us.load(std::sync::atomic::Ordering::Relaxed);
-    let post_blame_us = timing.post_blame_time_us.load(std::sync::atomic::Ordering::Relaxed);
-    let fastdiff_us = timing.fastdiff_time_us.load(std::sync::atomic::Ordering::Relaxed);
-    let tree_discovery_us = timing.tree_discovery_time_us.load(std::sync::atomic::Ordering::Relaxed);
-    let commit_walk_us = timing.commit_walk_time_us.load(std::sync::atomic::Ordering::Relaxed);
-    let files_blamed = timing.files_blamed.load(std::sync::atomic::Ordering::Relaxed);
-    
+    let blame_us = timing
+        .blame_time_us
+        .load(std::sync::atomic::Ordering::Relaxed);
+    let post_blame_us = timing
+        .post_blame_time_us
+        .load(std::sync::atomic::Ordering::Relaxed);
+    let fastdiff_us = timing
+        .fastdiff_time_us
+        .load(std::sync::atomic::Ordering::Relaxed);
+    let tree_discovery_us = timing
+        .tree_discovery_time_us
+        .load(std::sync::atomic::Ordering::Relaxed);
+    let commit_walk_us = timing
+        .commit_walk_time_us
+        .load(std::sync::atomic::Ordering::Relaxed);
+    let files_blamed = timing
+        .files_blamed
+        .load(std::sync::atomic::Ordering::Relaxed);
+
     let blame_ms = blame_us as f64 / 1000.0;
     let post_blame_ms = post_blame_us as f64 / 1000.0;
     let fastdiff_ms = fastdiff_us as f64 / 1000.0;
     let tree_discovery_ms = tree_discovery_us as f64 / 1000.0;
     let commit_walk_ms = commit_walk_us as f64 / 1000.0;
     let total_ms = blame_ms + post_blame_ms + fastdiff_ms + tree_discovery_ms + commit_walk_ms;
-    
+    // Avoid NaN percentages when nothing was measured (e.g. an empty repository).
+    let pct = |part: f64| {
+        if total_ms > 0.0 {
+            (part / total_ms) * 100.0
+        } else {
+            0.0
+        }
+    };
+
     eprintln!("\n=== Timing Statistics ===");
-    eprintln!("Blame (I/O):              {:8.1}ms ({:5.1}%)", blame_ms, (blame_ms / total_ms) * 100.0);
-    eprintln!("Post-blame (compute):    {:8.1}ms ({:5.1}%)", post_blame_ms, (post_blame_ms / total_ms) * 100.0);
-    eprintln!("Fast-diff:               {:8.1}ms ({:5.1}%)", fastdiff_ms, (fastdiff_ms / total_ms) * 100.0);
-    eprintln!("Tree discovery (I/O):    {:8.1}ms ({:5.1}%)", tree_discovery_ms, (tree_discovery_ms / total_ms) * 100.0);
-    eprintln!("Commit walk (I/O):       {:8.1}ms ({:5.1}%)", commit_walk_ms, (commit_walk_ms / total_ms) * 100.0);
+    eprintln!(
+        "Blame (I/O):              {:8.1}ms ({:5.1}%)",
+        blame_ms,
+        pct(blame_ms)
+    );
+    eprintln!(
+        "Post-blame (compute):    {:8.1}ms ({:5.1}%)",
+        post_blame_ms,
+        pct(post_blame_ms)
+    );
+    eprintln!(
+        "Fast-diff:               {:8.1}ms ({:5.1}%)",
+        fastdiff_ms,
+        pct(fastdiff_ms)
+    );
+    eprintln!(
+        "Tree discovery (I/O):    {:8.1}ms ({:5.1}%)",
+        tree_discovery_ms,
+        pct(tree_discovery_ms)
+    );
+    eprintln!(
+        "Commit walk (I/O):       {:8.1}ms ({:5.1}%)",
+        commit_walk_ms,
+        pct(commit_walk_ms)
+    );
     eprintln!("---");
     eprintln!("Total:                   {:8.1}ms", total_ms);
     eprintln!("Files blamed:            {}", files_blamed);
-    eprintln!("\nI/O operations: {:.1}ms ({:.1}%)", 
+    eprintln!(
+        "\nI/O operations: {:.1}ms ({:.1}%)",
         blame_ms + tree_discovery_ms + commit_walk_ms,
-        ((blame_ms + tree_discovery_ms + commit_walk_ms) / total_ms) * 100.0);
-    eprintln!("Computation:    {:.1}ms ({:.1}%)", 
+        pct(blame_ms + tree_discovery_ms + commit_walk_ms)
+    );
+    eprintln!(
+        "Computation:    {:.1}ms ({:.1}%)",
         post_blame_ms + fastdiff_ms,
-        ((post_blame_ms + fastdiff_ms) / total_ms) * 100.0);
+        pct(post_blame_ms + fastdiff_ms)
+    );
 }
