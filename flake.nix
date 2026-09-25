@@ -102,8 +102,8 @@
         # `nix build` -> builds the Rust CLI
         packages.default = self.packages.${system}.got-cli;
 
-        # `nix run .#analyze-rs` -> runs the Rust analyzer
-        apps.analyze-rs = {
+        # `nix run .#analyze` -> runs the Rust analyzer
+        apps.analyze = {
           type = "app";
           program = "${self.packages.${system}.got-cli}/bin/git-of-theseus-analyze";
         };
