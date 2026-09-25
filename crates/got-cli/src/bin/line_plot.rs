@@ -1,4 +1,4 @@
-//! `git-of-theseus-line-plot-rs` — Rust port of
+//! `git-of-theseus-line-plot` — Rust port of
 //! `git_of_theseus.line_plot.line_plot_cmdline`.
 //!
 //! Flags mirror the Python CLI so this is a near drop-in replacement.
@@ -13,11 +13,7 @@ use clap::Parser;
 use got_plot::{line_plot, LinePlotOptions};
 
 #[derive(Debug, Parser)]
-#[command(
-    name = "git-of-theseus-line-plot-rs",
-    version,
-    about = "Plot line plot"
-)]
+#[command(name = "git-of-theseus-line-plot", version, about = "Plot line plot")]
 struct Cli {
     /// Display plot (currently a no-op; the file is always written).
     #[arg(long, default_value_t = false)]

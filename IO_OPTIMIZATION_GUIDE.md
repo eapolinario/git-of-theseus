@@ -1,4 +1,4 @@
-# I/O Optimization Guide: git-of-theseus-analyze-rs
+# I/O Optimization Guide: git-of-theseus-analyze
 
 Since 99.6% of execution time is spent on `repo.blame_file()` I/O operations, this guide identifies concrete optimization strategies ranked by impact and implementation complexity.
 
@@ -33,16 +33,16 @@ Since 99.6% of execution time is spent on `repo.blame_file()` I/O operations, th
 
 ```bash
 # Default (1 week interval)
-git-of-theseus-analyze-rs --outdir output repo
+git-of-theseus-analyze --outdir output repo
 
 # 2-week interval: ~2x faster
-git-of-theseus-analyze-rs --interval 1209600 --outdir output repo
+git-of-theseus-analyze --interval 1209600 --outdir output repo
 
 # 1-month interval: ~4x faster
-git-of-theseus-analyze-rs --interval 2592000 --outdir output repo
+git-of-theseus-analyze --interval 2592000 --outdir output repo
 
 # 1-quarter interval: ~13x faster (but less granular)
-git-of-theseus-analyze-rs --interval 7776000 --outdir output repo
+git-of-theseus-analyze --interval 7776000 --outdir output repo
 ```
 
 **Trade-off:** Coarser time-series resolution, but much faster analysis.
@@ -65,7 +65,7 @@ git-of-theseus-analyze-rs --interval 7776000 --outdir output repo
 git clone /network/path/repo ~/local-repo
 
 # Analyze locally (much faster)
-git-of-theseus-analyze-rs --outdir output ~/local-repo
+git-of-theseus-analyze --outdir output ~/local-repo
 ```
 
 **Speedup:** 1.5–3x depending on network latency.
@@ -111,7 +111,7 @@ git config --global core.packedGitWindowSize 64m
 cp -r /network/repo ~/ssd-path/repo
 
 # Analyze
-git-of-theseus-analyze-rs --outdir output ~/ssd-path/repo
+git-of-theseus-analyze --outdir output ~/ssd-path/repo
 ```
 
 **Speedup:** Blame time will decrease proportionally to I/O latency reduction.
@@ -133,10 +133,10 @@ pub procs: usize,  // Default: num_cpus()
 
 ```bash
 # Use all available cores explicitly
-git-of-theseus-analyze-rs --procs 32 --outdir output repo
+git-of-theseus-analyze --procs 32 --outdir output repo
 
 # Force oversubscription (more threads than cores)
-git-of-theseus-analyze-rs --procs 64 --outdir output repo
+git-of-theseus-analyze --procs 64 --outdir output repo
 ```
 
 **When to use:**
@@ -180,7 +180,7 @@ match last_file_hash.remove(&entry.path) {
 
 **To verify it's working:**
 ```bash
-git-of-theseus-analyze-rs --measure-time --outdir output repo
+git-of-theseus-analyze --measure-time --outdir output repo
 
 # Look for files blamed vs. files processed
 # If files blamed << files processed, caching is working
@@ -384,7 +384,7 @@ fn analyze_incremental(repo, outdir, last_analysis_timestamp) {
 git clone --depth 500 /network/repo ~/shallow-repo
 
 # Analyze
-git-of-theseus-analyze-rs --outdir output ~/shallow-repo
+git-of-theseus-analyze --outdir output ~/shallow-repo
 ```
 
 **Benefit:**
@@ -420,7 +420,7 @@ echo "*.psd filter=lfs" >> .gitattributes
 git lfs migrate import --include="*.mp4"
 
 # Analyze (large files are skipped)
-git-of-theseus-analyze-rs --outdir output repo
+git-of-theseus-analyze --outdir output repo
 ```
 
 **Benefit:** Skip expensive binary files.
@@ -460,7 +460,7 @@ git commit-graph write --reachable
 **Combined speedup: ~2.5–6x**
 
 ```bash
-git-of-theseus-analyze-rs \
+git-of-theseus-analyze \
   --interval 1209600 \
   --procs 32 \
   --outdir output \
@@ -487,10 +487,10 @@ After implementing optimizations, use `--measure-time` to verify:
 
 ```bash
 # Before optimization
-git-of-theseus-analyze-rs --measure-time --outdir before ~/repo
+git-of-theseus-analyze --measure-time --outdir before ~/repo
 
 # After optimization
-git-of-theseus-analyze-rs --measure-time --outdir after ~/repo
+git-of-theseus-analyze --measure-time --outdir after ~/repo
 
 # Compare timing output
 ```

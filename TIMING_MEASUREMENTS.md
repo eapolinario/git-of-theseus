@@ -1,4 +1,4 @@
-# Timing Measurements: Proof That git-of-theseus-analyze-rs is I/O-Bound
+# Timing Measurements: Proof That git-of-theseus-analyze is I/O-Bound
 
 ## Methodology
 

@@ -21,7 +21,7 @@ cargo build --release
 Executables will be in `target/release/`. Add that directory to your `$PATH`, or run them directly:
 
 ```shell
-./target/release/git-of-theseus-analyze-rs --help
+./target/release/git-of-theseus-analyze --help
 ```
 
 ## Usage
@@ -29,7 +29,7 @@ Executables will be in `target/release/`. Add that directory to your `$PATH`, or
 ### Step 1 — Analyze a repository
 
 ```shell
-git-of-theseus-analyze-rs <path-to-repo> --outdir <output-dir>
+git-of-theseus-analyze <path-to-repo> --outdir <output-dir>
 ```
 
 This writes several JSON files to `<output-dir>`:
@@ -43,14 +43,14 @@ This writes several JSON files to `<output-dir>`:
 | `domains.json` | Lines of code grouped by author email domain |
 | `survival.json` | Data for survival curve estimation |
 
-Analysis can take a while on large repos. Run `git-of-theseus-analyze-rs --help` for all options including `--interval`, `--branch`, `--ignore`, and `--only`.
+Analysis can take a while on large repos. Run `git-of-theseus-analyze --help` for all options including `--interval`, `--branch`, `--ignore`, and `--only`.
 
 ### Analyzing multiple repositories
 
 Pass two or more repository paths to analyze them in one run:
 
 ```shell
-git-of-theseus-analyze-rs repo-one repo-two --outdir got
+git-of-theseus-analyze repo-one repo-two --outdir got
 ```
 
 Each repository writes the normal JSON files to a named subdirectory:
@@ -62,9 +62,9 @@ repositories have the same directory name, a numeric suffix is added.
 The Rust implementation includes the full pipeline — analyze + line/stack/survival plots. Line, stack, and survival plots accept multiple input files. Line and stack plots align repository timelines, carry values forward between samples, and prefix labels with the repository directory name:
 
 ```shell
-git-of-theseus-line-plot-rs got/repo-one/authors.json got/repo-two/authors.json
-git-of-theseus-stack-plot-rs got/repo-one/cohorts.json got/repo-two/cohorts.json
-git-of-theseus-survival-plot-rs got/repo-one/survival.json got/repo-two/survival.json
+git-of-theseus-line-plot got/repo-one/authors.json got/repo-two/authors.json
+git-of-theseus-stack-plot got/repo-one/cohorts.json got/repo-two/cohorts.json
+git-of-theseus-survival-plot got/repo-one/survival.json got/repo-two/survival.json
 ```
 
 Build and run end-to-end:
@@ -72,22 +72,22 @@ Build and run end-to-end:
 ```shell
 cargo build --release
 OUT=got-rs
-./target/release/git-of-theseus-analyze-rs <path-to-repo> --outdir $OUT
-./target/release/git-of-theseus-stack-plot-rs $OUT/cohorts.json --outfile cohorts.png
-./target/release/git-of-theseus-line-plot-rs   $OUT/authors.json --normalize --outfile authors.png
-./target/release/git-of-theseus-survival-plot-rs $OUT/survival.json --exp-fit --outfile survival.png
+./target/release/git-of-theseus-analyze <path-to-repo> --outdir $OUT
+./target/release/git-of-theseus-stack-plot $OUT/cohorts.json --outfile cohorts.png
+./target/release/git-of-theseus-line-plot   $OUT/authors.json --normalize --outfile authors.png
+./target/release/git-of-theseus-survival-plot $OUT/survival.json --exp-fit --outfile survival.png
 ```
 
 Analyzing multiple repositories and overlaying their plots works the same way as the Python CLIs:
 
 ```shell
-./target/release/git-of-theseus-analyze-rs repo-one repo-two --outdir got-rs
-./target/release/git-of-theseus-line-plot-rs got-rs/repo-one/authors.json got-rs/repo-two/authors.json --outfile authors.svg
-./target/release/git-of-theseus-stack-plot-rs got-rs/repo-one/cohorts.json got-rs/repo-two/cohorts.json --outfile cohorts.svg
-./target/release/git-of-theseus-survival-plot-rs got-rs/repo-one/survival.json got-rs/repo-two/survival.json --outfile survival.svg
+./target/release/git-of-theseus-analyze repo-one repo-two --outdir got-rs
+./target/release/git-of-theseus-line-plot got-rs/repo-one/authors.json got-rs/repo-two/authors.json --outfile authors.svg
+./target/release/git-of-theseus-stack-plot got-rs/repo-one/cohorts.json got-rs/repo-two/cohorts.json --outfile cohorts.svg
+./target/release/git-of-theseus-survival-plot got-rs/repo-one/survival.json got-rs/repo-two/survival.json --outfile survival.svg
 ```
 
-`git-of-theseus-analyze-rs` additionally supports `--merge` (Rust-only, no
+`git-of-theseus-analyze` additionally supports `--merge` (Rust-only, no
 Python equivalent): instead of one output subdirectory per repository, it
 combines every repository into a single set of output files written
 directly to `--outdir`. Series for a label shared across repositories
@@ -96,8 +96,8 @@ onto a shared timeline and summed, so the result reads as if all the
 repositories were one project:
 
 ```shell
-./target/release/git-of-theseus-analyze-rs repo-one repo-two --outdir got-rs-merged --merge
-./target/release/git-of-theseus-stack-plot-rs got-rs-merged/cohorts.json --outfile cohorts-merged.png
+./target/release/git-of-theseus-analyze repo-one repo-two --outdir got-rs-merged --merge
+./target/release/git-of-theseus-stack-plot got-rs-merged/cohorts.json --outfile cohorts-merged.png
 ```
 
 All Rust plot binaries support both PNG and SVG output (chosen by file extension)
@@ -105,20 +105,20 @@ and accept the existing plot flags (`--outfile`, `--max-n`, `--normalize`,
 `--exp-fit`, `--years`). `--display` is currently a no-op. Python and Rust
 line and stack plot commands support the same optional `--events` manifest.
 
-Flags on `git-of-theseus-analyze-rs` mirror `git-of-theseus-analyze`. Some Python-only features (mailmap rewriting via `git check-mailmap`, the `--opt` commit-graph flag, and interactive SIGINT pause/resume) are not yet implemented in the Rust port; the Python CLI remains the reference implementation while the migration is in progress. `--merge` is the reverse case: a Rust-only addition with no Python equivalent yet.
+Flags on `git-of-theseus-analyze` mirror `git-of-theseus-analyze`. Some Python-only features (mailmap rewriting via `git check-mailmap`, the `--opt` commit-graph flag, and interactive SIGINT pause/resume) are not yet implemented in the Rust port; the Python CLI remains the reference implementation while the migration is in progress. `--merge` is the reverse case: a Rust-only addition with no Python equivalent yet.
 
 ##### Rust port — TODO
 
 The Rust port is being delivered incrementally. Tracked work:
 
 **Part 1 — got-core / got-cli scaffold (this PR)**
-- [x] Cargo workspace with `got-core` library and `got-cli` (`git-of-theseus-analyze-rs`) binary
+- [x] Cargo workspace with `got-core` library and `got-cli` (`git-of-theseus-analyze`) binary
 - [x] Commit walking, interval-based commit sampling, tree enumeration, `--only` / `--ignore` / default-filetype filtering
 - [x] Default-filetype list snapshot generated from pygments via `scripts/gen_filetypes.py`
 - [x] Parallel blame via rayon with per-thread `git2::Repository`
 - [x] Fast diff that skips blame on unchanged blobs
 - [x] JSON output matching `cohorts.json` / `exts.json` / `authors.json` / `dirs.json` / `domains.json` / `survival.json`, consumable by the existing Python plot scripts
-- [x] Multi-repository analysis (`git-of-theseus-analyze-rs repo-a repo-b ...`) and multi-input line/stack/survival plots, matching the Python CLI
+- [x] Multi-repository analysis (`git-of-theseus-analyze repo-a repo-b ...`) and multi-input line/stack/survival plots, matching the Python CLI
 - [x] `--merge`: combine multiple repositories into a single, summed set of output files (Rust-only; no Python equivalent yet)
 - [x] Unit + end-to-end integration tests; `fmt --check`, `clippy -D warnings`, build/test in CI; CI cross-checks Rust JSON via the Python plot scripts
 
@@ -137,7 +137,7 @@ The Rust port is being delivered incrementally. Tracked work:
 - [ ] Optional: GitHub GraphQL `blame` API as an alternate backend (no proxy, rate-limited)
 
 **Part 3 — Rust ports of plot CLIs**
-- [x] `git-of-theseus-line-plot-rs`, `git-of-theseus-stack-plot-rs`, `git-of-theseus-survival-plot-rs` binaries built on [`plotters`](https://crates.io/crates/plotters), with PNG + SVG output and exp-fit parity to scipy's Nelder-Mead (verified to 6 decimals on a real `survival.json`)
+- [x] `git-of-theseus-line-plot`, `git-of-theseus-stack-plot`, `git-of-theseus-survival-plot` binaries built on [`plotters`](https://crates.io/crates/plotters), with PNG + SVG output and exp-fit parity to scipy's Nelder-Mead (verified to 6 decimals on a real `survival.json`)
 - [ ] Switch `plotters` to `default-features = false` + `ab_glyph` + a bundled font (e.g. DejaVuSans) so the Rust CLI no longer requires system `fontconfig`/`freetype` (and drop those deps from `flake.nix`)
 - [ ] Wire `--display` to actually open the rendered file (e.g. via the `open` crate / `xdg-open`); currently a no-op that prints a hint
 - [ ] Visual-regression snapshot tests for the rendered PNGs (golden-file diff with a small tolerance) once the rendering style stabilizes
@@ -145,7 +145,7 @@ The Rust port is being delivered incrementally. Tracked work:
 - [ ] Decide whether to keep the Python plot scripts or deprecate them once Rust parity is reached
 
 **Part 4 — Cutover**
-- [ ] Rename `git-of-theseus-analyze-rs` → `git-of-theseus-analyze` once feature parity and a release strategy are agreed
+- [ ] Rename `git-of-theseus-analyze` → `git-of-theseus-analyze` once feature parity and a release strategy are agreed
 - [ ] Ship pre-built binaries (release workflow + GitHub Releases)
 - [ ] Update `Dockerfile`, `flake.nix`, `Justfile`, and the existing CI matrix accordingly
 - [ ] Remove the Python `analyze.py` (and possibly the rest of the Python package) after a deprecation window
@@ -184,9 +184,9 @@ git-of-theseus-line-plot <output-dir>/authors.json \
   --events examples/events.yaml --outfile authors-with-events.png
 git-of-theseus-stack-plot <output-dir>/cohorts.json \
   --events examples/events.yaml --outfile cohorts-with-events.png
-git-of-theseus-line-plot-rs <output-dir>/authors.json \
+git-of-theseus-line-plot <output-dir>/authors.json \
   --events examples/events.yaml --outfile authors-with-events.svg
-git-of-theseus-stack-plot-rs <output-dir>/cohorts.json \
+git-of-theseus-stack-plot <output-dir>/cohorts.json \
   --events examples/events.yaml --outfile cohorts-with-events.svg
 ```
 
@@ -211,7 +211,7 @@ uv run git-of-theseus-stack-plot .\got\cohorts.json `
   --events "C:\path\to\model-releases.yaml" `
   --outfile .\cohorts-with-events.png
 
-cargo run -p got-cli --bin git-of-theseus-stack-plot-rs -- `
+cargo run -p got-cli --bin git-of-theseus-stack-plot -- `
   .\got\cohorts.json --events "C:\path\to\model-releases.yaml" `
   --outfile .\cohorts-with-events.svg
 ```

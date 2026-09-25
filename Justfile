@@ -26,27 +26,27 @@ analyze-rs-help:
 
 # Stack plot (Rust). Example: just stack-plot-rs got/cohorts.json cohorts.png
 stack-plot-rs FILE="got/cohorts.json" OUTFILE="stack_plot.png" *ARGS:
-    cargo run --release -p got-cli --bin git-of-theseus-stack-plot-rs -- {{ FILE }} --outfile {{ OUTFILE }} {{ ARGS }}
+    cargo run --release -p got-cli --bin git-of-theseus-stack-plot -- {{ FILE }} --outfile {{ OUTFILE }} {{ ARGS }}
 
 # Normalized stack plot (Rust)
 stack-plot-rs-normalized FILE="got/cohorts.json" OUTFILE="stack_plot_normalized.png" *ARGS:
-    cargo run --release -p got-cli --bin git-of-theseus-stack-plot-rs -- {{ FILE }} --normalize --outfile {{ OUTFILE }} {{ ARGS }}
+    cargo run --release -p got-cli --bin git-of-theseus-stack-plot -- {{ FILE }} --normalize --outfile {{ OUTFILE }} {{ ARGS }}
 
 # Line plot (Rust)
 line-plot-rs FILE="got/authors.json" OUTFILE="line_plot.png" *ARGS:
-    cargo run --release -p got-cli --bin git-of-theseus-line-plot-rs -- {{ FILE }} --outfile {{ OUTFILE }} {{ ARGS }}
+    cargo run --release -p got-cli --bin git-of-theseus-line-plot -- {{ FILE }} --outfile {{ OUTFILE }} {{ ARGS }}
 
 # Survival plot (Rust)
 survival-plot-rs FILE="got/survival.json" OUTFILE="survival_plot.png":
-    cargo run --release -p got-cli --bin git-of-theseus-survival-plot-rs -- {{ FILE }} --outfile {{ OUTFILE }}
+    cargo run --release -p got-cli --bin git-of-theseus-survival-plot -- {{ FILE }} --outfile {{ OUTFILE }}
 
 # Survival plot with exponential fit (Rust)
 survival-plot-rs-expfit FILE="got/survival.json" OUTFILE="survival_plot_expfit.png":
-    cargo run --release -p got-cli --bin git-of-theseus-survival-plot-rs -- {{ FILE }} --exp-fit --outfile {{ OUTFILE }}
+    cargo run --release -p got-cli --bin git-of-theseus-survival-plot -- {{ FILE }} --exp-fit --outfile {{ OUTFILE }}
 
 # Run the full Rust pipeline on a repo and generate all charts.
 all-rs REPO OUTDIR="got-rs":
-    cargo run --release -p got-cli --bin git-of-theseus-analyze-rs -- {{ REPO }} --outdir {{ OUTDIR }}
+    cargo run --release -p got-cli --bin git-of-theseus-analyze -- {{ REPO }} --outdir {{ OUTDIR }}
     just stack-plot-rs {{ OUTDIR }}/cohorts.json cohorts-rs.png
     just stack-plot-rs-normalized {{ OUTDIR }}/cohorts.json cohorts-rs-normalized.png
     just line-plot-rs {{ OUTDIR }}/authors.json authors-rs.png

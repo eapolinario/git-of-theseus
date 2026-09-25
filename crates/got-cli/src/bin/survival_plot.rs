@@ -1,4 +1,4 @@
-//! `git-of-theseus-survival-plot-rs` — Rust port of
+//! `git-of-theseus-survival-plot` — Rust port of
 //! `git_of_theseus.survival_plot.survival_plot_cmdline`.
 
 use std::path::PathBuf;
@@ -9,7 +9,7 @@ use got_plot::{survival_plot, SurvivalPlotOptions};
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "git-of-theseus-survival-plot-rs",
+    name = "git-of-theseus-survival-plot",
     version,
     about = "Plot survival plot"
 )]

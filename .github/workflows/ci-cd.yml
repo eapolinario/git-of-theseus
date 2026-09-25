@@ -102,7 +102,7 @@ jobs:
       - name: Run analyzer against this repo
         run: |
           mkdir -p got-rs
-          ./target/release/git-of-theseus-analyze-rs --quiet --outdir got-rs .
+          ./target/release/git-of-theseus-analyze --quiet --outdir got-rs .
           # Sanity-check JSON shape.
           python3 - <<'PY'
           import json
@@ -118,12 +118,12 @@ jobs:
 
       - name: Run all Rust plotting CLIs
         run: |
-          ./target/release/git-of-theseus-stack-plot-rs got-rs/cohorts.json --outfile got-rs/cohorts.png
-          ./target/release/git-of-theseus-stack-plot-rs got-rs/cohorts.json --normalize --outfile got-rs/cohorts-norm.png
-          ./target/release/git-of-theseus-stack-plot-rs got-rs/exts.json --outfile got-rs/exts.png
-          ./target/release/git-of-theseus-stack-plot-rs got-rs/authors.json --outfile got-rs/authors.png
-          ./target/release/git-of-theseus-line-plot-rs got-rs/authors.json --outfile got-rs/authors.png
-          ./target/release/git-of-theseus-line-plot-rs got-rs/dirs.json --outfile got-rs/dirs.png
-          ./target/release/git-of-theseus-stack-plot-rs got-rs/cohorts.json --events examples/events.yaml --outfile got-rs/cohorts-events.png
-          ./target/release/git-of-theseus-line-plot-rs got-rs/authors.json --events examples/events.yaml --outfile got-rs/authors-events.svg
-          ./target/release/git-of-theseus-survival-plot-rs got-rs/survival.json --exp-fit --outfile got-rs/survival.png
+          ./target/release/git-of-theseus-stack-plot got-rs/cohorts.json --outfile got-rs/cohorts.png
+          ./target/release/git-of-theseus-stack-plot got-rs/cohorts.json --normalize --outfile got-rs/cohorts-norm.png
+          ./target/release/git-of-theseus-stack-plot got-rs/exts.json --outfile got-rs/exts.png
+          ./target/release/git-of-theseus-stack-plot got-rs/authors.json --outfile got-rs/authors.png
+          ./target/release/git-of-theseus-line-plot got-rs/authors.json --outfile got-rs/authors.png
+          ./target/release/git-of-theseus-line-plot got-rs/dirs.json --outfile got-rs/dirs.png
+          ./target/release/git-of-theseus-stack-plot got-rs/cohorts.json --events examples/events.yaml --outfile got-rs/cohorts-events.png
+          ./target/release/git-of-theseus-line-plot got-rs/authors.json --events examples/events.yaml --outfile got-rs/authors-events.svg
+          ./target/release/git-of-theseus-survival-plot got-rs/survival.json --exp-fit --outfile got-rs/survival.png

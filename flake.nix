@@ -124,7 +124,7 @@
         # `nix run .#analyze-rs` -> runs the Rust analyzer
         apps.analyze-rs = {
           type = "app";
-          program = "${self.packages.${system}.got-cli}/bin/git-of-theseus-analyze-rs";
+          program = "${self.packages.${system}.got-cli}/bin/git-of-theseus-analyze";
         };
       }
     );

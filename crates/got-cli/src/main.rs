@@ -13,7 +13,7 @@ use got_core::{analyze_many, AnalyzeOptions, DEFAULT_INTERVAL_SECS};
 
 /// Analyze a git repository's history and emit JSON time-series files.
 #[derive(Debug, Parser)]
-#[command(name = "git-of-theseus-analyze-rs", version, about)]
+#[command(name = "git-of-theseus-analyze", version, about)]
 struct Cli {
     /// A chrono/strftime format string (e.g. "%Y") for cohort labels.
     #[arg(long, default_value = "%Y")]
