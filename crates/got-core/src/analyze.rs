@@ -141,12 +141,16 @@ pub fn analyze_many(repo_dirs: &[PathBuf], options: &AnalyzeOptions) -> Result<V
         return Ok(vec![analyze(&opts)?]);
     }
 
+    // Built once and shared across every repository below, instead of each
+    // repository spawning (and tearing down) its own worker threads.
+    let pool = build_thread_pool(options.procs)?;
+
     if options.merge {
         let mut results = Vec::with_capacity(repo_dirs.len());
         for repo_dir in repo_dirs {
             let mut opts = options.clone();
             opts.repo_dir = repo_dir.clone();
-            results.push(analyze_in_memory(&opts)?);
+            results.push(analyze_in_memory_with_pool(&opts, &pool)?);
         }
         let merged = merge_results(&results)?;
         write_outputs(options, &merged)?;
@@ -163,7 +167,9 @@ pub fn analyze_many(repo_dirs: &[PathBuf], options: &AnalyzeOptions) -> Result<V
         let mut opts = options.clone();
         opts.repo_dir = repo_dir.clone();
         opts.outdir = options.outdir.join(name);
-        results.push(analyze(&opts)?);
+        let result = analyze_in_memory_with_pool(&opts, &pool)?;
+        write_outputs(&opts, &result)?;
+        results.push(result);
     }
     Ok(results)
 }
@@ -287,14 +293,23 @@ fn merge_curve_maps(
 /// Runs the analysis but does not touch the filesystem. Useful for tests
 /// and embedding in WASM / library contexts.
 pub fn analyze_in_memory(options: &AnalyzeOptions) -> Result<AnalyzeResult> {
+    let pool = build_thread_pool(options.procs)?;
+    analyze_in_memory_with_pool(options, &pool)
+}
+
+/// Same as [`analyze_in_memory`], but reuses a caller-provided thread pool
+/// instead of building a new one. [`analyze_many`] uses this so that
+/// multiple repositories share one pool -- and one set of worker threads
+/// -- instead of each repository spawning (and tearing down) its own.
+fn analyze_in_memory_with_pool(
+    options: &AnalyzeOptions,
+    pool: &rayon::ThreadPool,
+) -> Result<AnalyzeResult> {
     let repo = Repository::open(&options.repo_dir)
         .with_context(|| format!("opening repository {}", options.repo_dir.display()))?;
 
     let branch_oid = resolve_branch(&repo, &options.branch, options.quiet)?;
     let filter = PathFilter::new(&options.only, &options.ignore, options.all_filetypes)?;
-    // Built once and reused for both the parallel tree walk (step 3) and
-    // the parallel blame (step 4).
-    let pool = build_thread_pool(options.procs)?;
 
     // Step 1: walk every reachable commit on the branch, build cohort map
     // and the up-front `curve_key_tuples` for cohort / author / domain.
@@ -360,7 +375,7 @@ pub fn analyze_in_memory(options: &AnalyzeOptions) -> Result<AnalyzeResult> {
         Some(sampled.len() as u64),
     );
     let mut entries_per_commit =
-        discover_entries(&pool, &options.repo_dir, &sampled, &filter, &progress)?;
+        discover_entries(pool, &options.repo_dir, &sampled, &filter, &progress)?;
     for entries in &entries_per_commit {
         for entry in entries {
             ext_set.insert(extension(&entry.path));
@@ -467,7 +482,7 @@ pub fn analyze_in_memory(options: &AnalyzeOptions) -> Result<AnalyzeResult> {
 
         // Blame the changed files (in parallel).
         let blame_results = blame_files(
-            &pool,
+            pool,
             &options.repo_dir,
             *commit_oid,
             &to_blame,
