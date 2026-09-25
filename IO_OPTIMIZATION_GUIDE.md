@@ -163,14 +163,16 @@ git-of-theseus-analyze-rs --procs 64 --outdir output repo
 2. If file unchanged since last commit, reuse previous blame result
 3. Fast-diff already detects unchanged files — use that to skip blame
 
-**Current fast-diff logic:**
+**Current fast-diff logic** (`plan_commits()`):
 ```rust
-match last_file_hash.get(&entry.path) {
-    Some(prev_oid) if *prev_oid == entry.blob_oid => {
-        // Identical file: nothing to do.
-        progress.inc(1);  // ← Already skips blame!
+match last_file_hash.remove(&entry.path) {
+    // Identical file: nothing to do.
+    Some(previous_oid) if previous_oid == entry.blob_oid => progress.inc(1), // ← Already skips blame!
+    Some(_) => {
+        paths_to_remove.push(entry.path.clone());
+        to_blame.push(entry);
     }
-    // ...
+    None => to_blame.push(entry),
 }
 ```
 
@@ -205,24 +207,31 @@ For each sampled commit:
   4. Move to next commit
 ```
 
-**Optimization:** Queue blame operations ahead of fast-diff:
+**Optimization:** Separate ordered fast-diff planning from blame execution:
 
 ```
-For sampled commit N:
-  1. Fast-diff: Detect changed files
-  2. Queue blame for commit N
-  
-For sampled commit N+1:
-  1. Queue blame for commit N (if not done)
-  2. Fast-diff for commit N+1
-  3. While blaming N+1, prefetch object database for N+2
+1. Walk sampled commits in order and create a plan for each commit:
+   - files to blame
+   - modified or deleted paths to remove from cumulative state
+2. Process a bounded window of commit plans with Rayon.
+3. Group results by commit.
+4. Apply only complete commits, in sampled order.
 ```
 
-**Benefit:** Hide I/O latency by overlapping blame wait time with other work.
+**Why ordering matters:** `cur_y` and `last_file_y` are cumulative. Applying
+results in worker completion order changes later fast-diff state and corrupts
+the output curves.
 
-**Implementation complexity:** Medium (requires thread coordination)
+**Benefit:** Blame work from adjacent commits can use idle workers when one
+commit has fewer changed files than the Rayon pool. A bounded window limits
+result memory.
 
-**Estimated effort:** 4–6 hours
+**Limit:** This does not reduce the total blame work. Repositories where each
+sampled commit already has enough changed files to fill the worker pool may
+show little or no improvement. Report measured speedup only.
+
+**Implementation:** `crates/got-core/src/analyze.rs`, `plan_commits()` and
+`blame_commit_window()`.
 
 ---
 
@@ -232,9 +241,9 @@ For sampled commit N+1:
 
 **Current code:**
 ```rust
-fn blame_files(..., entries: &[TreeEntry], ...) {
-    entries.par_iter().map(|entry| {
-        repo.blame_file(...)  // ← One blame per file, sequentially
+fn blame_commit_window(..., plans: &[CommitPlan], ...) {
+    tasks.par_iter().map_init(open_repo, |repo, (plan_idx, commit_oid, entry)| {
+        blame_one(repo, entry, ...)  // ← One repo.blame_file() per file
     })
 }
 ```
@@ -270,7 +279,7 @@ for entry in entries {
 
 **Estimated effort:** 8–12 hours
 
-**Code location:** `crates/got-core/src/analyze.rs`, function `blame_files()`
+**Code location:** `crates/got-core/src/analyze.rs`, functions `blame_commit_window()` and `blame_one()`
 
 ---
 

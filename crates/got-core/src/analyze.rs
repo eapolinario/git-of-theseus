@@ -449,7 +449,6 @@ fn analyze_in_memory_with_pool(
 
     let mut cur_y: HashMap<Key, u64> = HashMap::new();
     let mut last_file_y: HashMap<String, FileHistogram> = HashMap::new();
-    let mut last_file_hash: HashMap<String, Oid> = HashMap::new();
     let mut commit_history: BTreeMap<String, SurvivalSeries> = BTreeMap::new();
 
     let cohort_keys: Vec<Key> = cohort_set
@@ -491,70 +490,24 @@ fn analyze_in_memory_with_pool(
         Some(total_entries),
     );
 
-    for (commit_idx, (commit_oid, commit_ts)) in sampled.iter().enumerate() {
-        let entries = std::mem::take(&mut entries_per_commit[commit_idx]);
+    let fastdiff_start = options.measure_time.then(Instant::now);
+    let commit_plans = plan_commits(&sampled, &mut entries_per_commit, &progress);
+    if let Some(start) = fastdiff_start {
+        options
+            .timing
+            .fastdiff_time_us
+            .fetch_add(start.elapsed().as_micros() as u64, Ordering::Relaxed);
+    }
 
-        // Fast-diff: collect entries to actually blame, subtracting
-        // contributions from modified or deleted files.
-        let fastdiff_start = if options.measure_time {
-            Some(Instant::now())
-        } else {
-            None
-        };
-        let mut cur_file_hash: HashMap<String, Oid> = HashMap::new();
-        let mut to_blame: Vec<TreeEntry> = Vec::new();
-        for entry in &entries {
-            cur_file_hash.insert(entry.path.clone(), entry.blob_oid);
-            match last_file_hash.get(&entry.path) {
-                Some(prev_oid) if *prev_oid == entry.blob_oid => {
-                    // Identical file: nothing to do.
-                    progress.inc(1);
-                }
-                Some(_) => {
-                    // Modified: subtract previous contribution, will re-blame.
-                    if let Some(prev) = last_file_y.remove(&entry.path) {
-                        for (key, count) in prev {
-                            if let Some(v) = cur_y.get_mut(&key) {
-                                *v = v.saturating_sub(count);
-                            }
-                        }
-                    }
-                    to_blame.push(entry.clone());
-                }
-                None => {
-                    // Newly added file.
-                    to_blame.push(entry.clone());
-                }
-            }
-            last_file_hash.remove(&entry.path);
-        }
-        // Whatever remains in `last_file_hash` from the previous iteration
-        // are deleted files; subtract their contributions.
-        for (deleted, _) in last_file_hash.drain() {
-            if let Some(prev) = last_file_y.remove(&deleted) {
-                for (key, count) in prev {
-                    if let Some(v) = cur_y.get_mut(&key) {
-                        *v = v.saturating_sub(count);
-                    }
-                }
-            }
-        }
-        last_file_hash = cur_file_hash;
-
-        if let Some(start) = fastdiff_start {
-            let elapsed_us = start.elapsed().as_micros() as u64;
-            options
-                .timing
-                .fastdiff_time_us
-                .fetch_add(elapsed_us, Ordering::Relaxed);
-        }
-
-        // Blame the changed files (in parallel).
-        let blame_results = blame_files(
+    // A window lets files from adjacent commits use idle Rayon workers.
+    // Results are still applied one complete commit at a time in sampled
+    // order because the cumulative histogram depends on chronological state.
+    let window_size = options.procs.max(1);
+    for window in commit_plans.chunks(window_size) {
+        let blame_results = blame_commit_window(
             pool,
             &options.repo_dir,
-            *commit_oid,
-            &to_blame,
+            window,
             &commit2cohort,
             options.ignore_whitespace,
             &progress,
@@ -562,39 +515,37 @@ fn analyze_in_memory_with_pool(
             options.measure_time,
         )?;
 
-        // Measure post-blame histogram aggregation
-        let agg_start = if options.measure_time {
-            Some(Instant::now())
-        } else {
-            None
-        };
-        for (path, hist) in blame_results {
-            for (key, count) in &hist {
-                *cur_y.entry(key.clone()).or_insert(0) += *count;
+        for (plan, results) in window.iter().zip(blame_results) {
+            let agg_start = options.measure_time.then(Instant::now);
+            for path in &plan.paths_to_remove {
+                if let Some(previous) = last_file_y.remove(path) {
+                    subtract_histogram(&mut cur_y, previous);
+                }
             }
-            last_file_y.insert(path, hist);
-        }
-        if let Some(start) = agg_start {
-            let elapsed_us = start.elapsed().as_micros() as u64;
-            options
-                .timing
-                .post_blame_time_us
-                .fetch_add(elapsed_us, Ordering::Relaxed);
-        }
+            for (path, hist) in results {
+                for (key, count) in &hist {
+                    *cur_y.entry(key.clone()).or_insert(0) += *count;
+                }
+                last_file_y.insert(path, hist);
+            }
+            if let Some(start) = agg_start {
+                options
+                    .timing
+                    .post_blame_time_us
+                    .fetch_add(start.elapsed().as_micros() as u64, Ordering::Relaxed);
+            }
 
-        // Snapshot per-curve values for this sampled commit.
-        for (key, series) in curves.iter_mut() {
-            series.push(*cur_y.get(key).unwrap_or(&0));
-        }
-        // Survival data: any `(Sha, sha)` entry in cur_y with a non-zero
-        // count contributes (commit_ts, count) at this point in time.
-        for (key, count) in cur_y.iter() {
-            if let Key(Category::Sha, sha) = key {
-                if *count > 0 {
-                    commit_history
-                        .entry(sha.clone())
-                        .or_default()
-                        .push((*commit_ts, *count));
+            for (key, series) in curves.iter_mut() {
+                series.push(*cur_y.get(key).unwrap_or(&0));
+            }
+            for (key, count) in cur_y.iter() {
+                if let Key(Category::Sha, sha) = key {
+                    if *count > 0 {
+                        commit_history
+                            .entry(sha.clone())
+                            .or_default()
+                            .push((plan.commit_ts, *count));
+                    }
                 }
             }
         }
@@ -674,6 +625,60 @@ pub fn write_outputs(options: &AnalyzeOptions, result: &AnalyzeResult) -> Result
 struct TreeEntry {
     path: String,
     blob_oid: Oid,
+}
+
+#[derive(Debug)]
+struct CommitPlan {
+    commit_oid: Oid,
+    commit_ts: i64,
+    paths_to_remove: Vec<String>,
+    to_blame: Vec<TreeEntry>,
+}
+
+fn plan_commits(
+    sampled: &[(Oid, i64)],
+    entries_per_commit: &mut [Vec<TreeEntry>],
+    progress: &ProgressBar,
+) -> Vec<CommitPlan> {
+    let mut last_file_hash: HashMap<String, Oid> = HashMap::new();
+    let mut plans = Vec::with_capacity(sampled.len());
+
+    for (commit_idx, (commit_oid, commit_ts)) in sampled.iter().enumerate() {
+        let entries = std::mem::take(&mut entries_per_commit[commit_idx]);
+        let mut cur_file_hash = HashMap::with_capacity(entries.len());
+        let mut paths_to_remove = Vec::new();
+        let mut to_blame = Vec::new();
+
+        for entry in entries {
+            cur_file_hash.insert(entry.path.clone(), entry.blob_oid);
+            match last_file_hash.remove(&entry.path) {
+                Some(previous_oid) if previous_oid == entry.blob_oid => progress.inc(1),
+                Some(_) => {
+                    paths_to_remove.push(entry.path.clone());
+                    to_blame.push(entry);
+                }
+                None => to_blame.push(entry),
+            }
+        }
+        paths_to_remove.extend(last_file_hash.drain().map(|(path, _)| path));
+        last_file_hash = cur_file_hash;
+        plans.push(CommitPlan {
+            commit_oid: *commit_oid,
+            commit_ts: *commit_ts,
+            paths_to_remove,
+            to_blame,
+        });
+    }
+
+    plans
+}
+
+fn subtract_histogram(cur_y: &mut HashMap<Key, u64>, histogram: FileHistogram) {
+    for (key, count) in histogram {
+        if let Some(value) = cur_y.get_mut(&key) {
+            *value = value.saturating_sub(count);
+        }
+    }
 }
 
 fn collect_blob_entries(
@@ -774,49 +779,67 @@ fn discover_entries(
     Ok(out)
 }
 
-/// Blames each entry at `commit_oid` and returns `(path, histogram)` pairs.
-/// Each worker thread opens its own `git2::Repository` because `Repository`
-/// is not `Sync`.
+/// Blames all changed files in a bounded commit window. The indexed parallel
+/// iterator preserves task order, then results are grouped by commit so the
+/// caller can apply complete commits chronologically.
 #[allow(clippy::too_many_arguments)]
-fn blame_files(
+fn blame_commit_window(
     pool: &rayon::ThreadPool,
     repo_dir: &Path,
-    commit_oid: Oid,
-    entries: &[TreeEntry],
+    plans: &[CommitPlan],
     commit2cohort: &HashMap<Oid, String>,
     ignore_whitespace: bool,
     progress: &ProgressBar,
     timing: &TimingStats,
     measure_time: bool,
-) -> Result<Vec<(String, FileHistogram)>> {
-    if entries.is_empty() {
-        return Ok(Vec::new());
+) -> Result<Vec<Vec<(String, FileHistogram)>>> {
+    let tasks: Vec<(usize, Oid, &TreeEntry)> = plans
+        .iter()
+        .enumerate()
+        .flat_map(|(plan_idx, plan)| {
+            plan.to_blame
+                .iter()
+                .map(move |entry| (plan_idx, plan.commit_oid, entry))
+        })
+        .collect();
+    if tasks.is_empty() {
+        return Ok((0..plans.len()).map(|_| Vec::new()).collect());
     }
-    let results: Vec<Result<(String, FileHistogram)>> = pool.install(|| {
-        entries
+
+    let results: Vec<Result<(usize, String, FileHistogram)>> = pool.install(|| {
+        tasks
             .par_iter()
             .map_init(
                 || Repository::open(repo_dir).context("opening repo on worker"),
-                |repo_result, entry| -> Result<(String, FileHistogram)> {
-                    let repo = repo_result.as_ref().map_err(|e| anyhow!("{e}"))?;
+                |repo_result, (plan_idx, commit_oid, entry)| {
+                    let repo = repo_result.as_ref().map_err(|e| {
+                        anyhow!("{e:#}")
+                            .context(format!("blaming {} at commit {}", entry.path, commit_oid))
+                    })?;
                     let mut opts = BlameOptions::new();
-                    opts.newest_commit(commit_oid);
+                    opts.newest_commit(*commit_oid);
                     if ignore_whitespace {
                         opts.ignore_whitespace(true);
                     }
-                    let hist =
-                        blame_one(repo, entry, &mut opts, commit2cohort, timing, measure_time);
+                    let histogram =
+                        blame_one(repo, entry, &mut opts, commit2cohort, timing, measure_time)
+                            .with_context(|| {
+                                format!("blaming {} at commit {}", entry.path, commit_oid)
+                            })?;
                     progress.inc(1);
-                    Ok((entry.path.clone(), hist.unwrap_or_default()))
+                    Ok((*plan_idx, entry.path.clone(), histogram))
                 },
             )
             .collect()
     });
-    let mut out = Vec::with_capacity(results.len());
-    for r in results {
-        out.push(r?);
+
+    let mut grouped: Vec<Vec<(String, FileHistogram)>> =
+        (0..plans.len()).map(|_| Vec::new()).collect();
+    for result in results {
+        let (plan_idx, path, histogram) = result?;
+        grouped[plan_idx].push((path, histogram));
     }
-    Ok(out)
+    Ok(grouped)
 }
 
 fn blame_one(
