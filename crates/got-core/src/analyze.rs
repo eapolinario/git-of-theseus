@@ -622,4 +622,98 @@ mod tests {
         assert_eq!(extract_domain("noemail"), "noemail");
         assert_eq!(extract_domain(""), "");
     }
+
+    /// Regression test for parallel tree-walk discovery: runs
+    /// `discover_entries` on a pool with more worker threads than there are
+    /// sampled commits (so every thread picks up work) and checks the
+    /// result against a plain sequential walk of the same commits.
+    #[test]
+    fn discover_entries_matches_sequential_across_multiple_workers() {
+        use std::process::Command;
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let repo_path = dir.path();
+
+        let run = |args: &[&str], date: &str| {
+            let status = Command::new("git")
+                .args(args)
+                .current_dir(repo_path)
+                .env("GIT_AUTHOR_NAME", "Alice")
+                .env("GIT_AUTHOR_EMAIL", "alice@example.com")
+                .env("GIT_COMMITTER_NAME", "Alice")
+                .env("GIT_COMMITTER_EMAIL", "alice@example.com")
+                .env("GIT_AUTHOR_DATE", date)
+                .env("GIT_COMMITTER_DATE", date)
+                .status()
+                .expect("git available");
+            assert!(status.success(), "git {args:?} failed");
+        };
+        let head_oid = || -> Oid {
+            let output = Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(repo_path)
+                .output()
+                .expect("git available");
+            assert!(output.status.success());
+            Oid::from_str(String::from_utf8(output.stdout).unwrap().trim()).unwrap()
+        };
+
+        run(&["init", "-q", "-b", "main"], "2024-01-01T00:00:00Z");
+        run(
+            &["config", "commit.gpgsign", "false"],
+            "2024-01-01T00:00:00Z",
+        );
+
+        // Five commits, each touching several files. Sampled against a
+        // 4-worker pool this guarantees every thread picks up at least one
+        // commit, so the test actually exercises cross-thread dispatch
+        // rather than a pool that happens to run everything on one thread.
+        const N_COMMITS: usize = 5;
+        const N_FILES: usize = 4;
+        let mut sampled: Vec<(Oid, i64)> = Vec::new();
+        for i in 0..N_COMMITS {
+            for f in 0..N_FILES {
+                std::fs::write(
+                    repo_path.join(format!("file{f}.txt")),
+                    format!("commit {i} touches file {f}\nline two\n"),
+                )
+                .unwrap();
+            }
+            let date = format!("2024-01-{:02}T00:00:00Z", i + 1);
+            run(&["add", "-A"], &date);
+            run(&["commit", "-q", "-m", &format!("commit {i}")], &date);
+            sampled.push((head_oid(), i as i64));
+        }
+
+        let repo = Repository::open(repo_path).unwrap();
+        let filter = PathFilter::new(&[], &[], true).unwrap();
+        let progress = ProgressBar::hidden();
+
+        // Sequential baseline: walk each sampled commit's tree directly.
+        let sequential: Vec<Vec<(String, Oid)>> = sampled
+            .iter()
+            .map(|(oid, _)| {
+                let commit = repo.find_commit(*oid).unwrap();
+                let tree = commit.tree().unwrap();
+                collect_blob_entries(&repo, &tree, &filter)
+                    .unwrap()
+                    .into_iter()
+                    .map(|e| (e.path, e.blob_oid))
+                    .collect()
+            })
+            .collect();
+
+        // Parallel version, run on a pool with more worker threads than
+        // there are sampled commits, so real cross-thread dispatch happens.
+        let pool = build_thread_pool(4).unwrap();
+        let parallel: Vec<Vec<(String, Oid)>> =
+            discover_entries(&pool, repo_path, &sampled, &filter, &progress)
+                .unwrap()
+                .into_iter()
+                .map(|entries| entries.into_iter().map(|e| (e.path, e.blob_oid)).collect())
+                .collect();
+
+        assert_eq!(parallel, sequential);
+    }
 }
