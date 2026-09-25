@@ -10,18 +10,18 @@ Here's an example running it on this very repository — code broken down by the
 
 ## Installation
 
-This is a fork of the original [git-of-theseus](https://github.com/erikbern/git-of-theseus) project. Install directly from this repository:
-
-```shell
-pip install git+https://github.com/eapolinario/git-of-theseus.git
-```
-
-Or clone and install with [uv](https://github.com/astral-sh/uv):
+Clone the repository and build with Cargo:
 
 ```shell
 git clone https://github.com/eapolinario/git-of-theseus.git
 cd git-of-theseus
-uv sync
+cargo build --release
+```
+
+Executables will be in `target/release/`. Add that directory to your `$PATH`, or run them directly:
+
+```shell
+./target/release/git-of-theseus-analyze --help
 ```
 
 ## Usage
@@ -40,6 +40,7 @@ This writes several JSON files to `<output-dir>`:
 | `authors.json` | Lines of code grouped by author |
 | `exts.json` | Lines of code grouped by file extension |
 | `dirs.json` | Lines of code grouped by top-level directory |
+| `domains.json` | Lines of code grouped by author email domain |
 | `survival.json` | Data for survival curve estimation |
 
 Analysis can take a while on large repos. Run `git-of-theseus-analyze --help` for all options including `--interval`, `--branch`, `--ignore`, and `--only`.
@@ -56,9 +57,9 @@ Each repository writes the normal JSON files to a named subdirectory:
 `got/repo-one/cohorts.json`, `got/repo-two/cohorts.json`, and so on. If two
 repositories have the same directory name, a numeric suffix is added.
 
-Line, stack, and survival plots accept multiple input files. Line and stack
-plots align repository timelines, carry values forward between samples, and
-prefix labels with the repository directory name:
+### Plotting
+
+The Rust implementation includes the full pipeline — analyze + line/stack/survival plots. Line, stack, and survival plots accept multiple input files. Line and stack plots align repository timelines, carry values forward between samples, and prefix labels with the repository directory name:
 
 ```shell
 git-of-theseus-line-plot got/repo-one/authors.json got/repo-two/authors.json
@@ -66,41 +67,27 @@ git-of-theseus-stack-plot got/repo-one/cohorts.json got/repo-two/cohorts.json
 git-of-theseus-survival-plot got/repo-one/survival.json got/repo-two/survival.json
 ```
 
-#### Faster analysis with the Rust port (experimental)
-
-A Rust reimplementation is being developed in this repository under `crates/got-core`, `crates/got-cli`, and `crates/got-plot`. It uses [libgit2](https://libgit2.org/) directly and runs significantly faster than the Python version on large histories. The full pipeline — analyze + line/stack/survival plots — is available in Rust:
-
-| Python CLI | Rust CLI |
-|---|---|
-| `git-of-theseus-analyze` | `git-of-theseus-analyze-rs` |
-| `git-of-theseus-line-plot` | `git-of-theseus-line-plot-rs` |
-| `git-of-theseus-stack-plot` | `git-of-theseus-stack-plot-rs` |
-| `git-of-theseus-survival-plot` | `git-of-theseus-survival-plot-rs` |
-
-The Rust analyzer writes the same JSON schema as Python, so you can mix and match — e.g. analyze with Rust and plot with Python, or vice versa. The Rust CLIs support the same multi-repository input as their Python counterparts: pass several repository paths to `git-of-theseus-analyze-rs`, and several JSON files to the Rust line/stack/survival plot binaries.
-
 Build and run end-to-end:
 
 ```shell
 cargo build --release
 OUT=got-rs
-./target/release/git-of-theseus-analyze-rs <path-to-repo> --outdir $OUT
-./target/release/git-of-theseus-stack-plot-rs $OUT/cohorts.json --outfile cohorts.png
-./target/release/git-of-theseus-line-plot-rs   $OUT/authors.json --normalize --outfile authors.png
-./target/release/git-of-theseus-survival-plot-rs $OUT/survival.json --exp-fit --outfile survival.png
+./target/release/git-of-theseus-analyze <path-to-repo> --outdir $OUT
+./target/release/git-of-theseus-stack-plot $OUT/cohorts.json --outfile cohorts.png
+./target/release/git-of-theseus-line-plot   $OUT/authors.json --normalize --outfile authors.png
+./target/release/git-of-theseus-survival-plot $OUT/survival.json --exp-fit --outfile survival.png
 ```
 
-Analyzing multiple repositories and overlaying their plots works the same way as the Python CLIs:
+Analyzing multiple repositories and overlaying their plots works the same way:
 
 ```shell
-./target/release/git-of-theseus-analyze-rs repo-one repo-two --outdir got-rs
-./target/release/git-of-theseus-line-plot-rs got-rs/repo-one/authors.json got-rs/repo-two/authors.json --outfile authors.svg
-./target/release/git-of-theseus-stack-plot-rs got-rs/repo-one/cohorts.json got-rs/repo-two/cohorts.json --outfile cohorts.svg
-./target/release/git-of-theseus-survival-plot-rs got-rs/repo-one/survival.json got-rs/repo-two/survival.json --outfile survival.svg
+./target/release/git-of-theseus-analyze repo-one repo-two --outdir got-rs
+./target/release/git-of-theseus-line-plot got-rs/repo-one/authors.json got-rs/repo-two/authors.json --outfile authors.svg
+./target/release/git-of-theseus-stack-plot got-rs/repo-one/cohorts.json got-rs/repo-two/cohorts.json --outfile cohorts.svg
+./target/release/git-of-theseus-survival-plot got-rs/repo-one/survival.json got-rs/repo-two/survival.json --outfile survival.svg
 ```
 
-`git-of-theseus-analyze-rs` additionally supports `--merge` (Rust-only, no
-Python equivalent): instead of one output subdirectory per repository, it
+`git-of-theseus-analyze` additionally supports `--merge`: instead of one output subdirectory per repository, it
 combines every repository into a single set of output files written
 directly to `--outdir`. Series for a label shared across repositories
 (the same author, extension, cohort, directory, or domain) are aligned
@@ -108,29 +95,36 @@ onto a shared timeline and summed, so the result reads as if all the
 repositories were one project:
 
 ```shell
-./target/release/git-of-theseus-analyze-rs repo-one repo-two --outdir got-rs-merged --merge
-./target/release/git-of-theseus-stack-plot-rs got-rs-merged/cohorts.json --outfile cohorts-merged.png
+./target/release/git-of-theseus-analyze repo-one repo-two --outdir got-rs-merged --merge
+./target/release/git-of-theseus-stack-plot got-rs-merged/cohorts.json --outfile cohorts-merged.png
 ```
 
 All Rust plot binaries support both PNG and SVG output (chosen by file extension)
 and accept the existing plot flags (`--outfile`, `--max-n`, `--normalize`,
-`--exp-fit`, `--years`). `--display` is currently a no-op. Python and Rust
+`--exp-fit`, `--years`). `--display` is currently a no-op. The Rust
 line and stack plot commands support the same optional `--events` manifest.
 
-Flags on `git-of-theseus-analyze-rs` mirror `git-of-theseus-analyze`. Some Python-only features (mailmap rewriting via `git check-mailmap`, the `--opt` commit-graph flag, and interactive SIGINT pause/resume) are not yet implemented in the Rust port; the Python CLI remains the reference implementation while the migration is in progress. `--merge` is the reverse case: a Rust-only addition with no Python equivalent yet.
+The Rust CLI is now the only shipped implementation; the Python package has
+been removed. A handful of features from the former Python CLI are not yet
+implemented in Rust and are documented below as a breaking change rather than
+a gap versus a still-available reference implementation: mailmap rewriting
+via `git check-mailmap`, the `--opt` commit-graph flag, and interactive
+SIGINT pause/resume. Invocations that relied on those flags will now fail;
+see the deferred-features checklist below for tracking. `--merge` is the
+reverse case: a Rust-only addition that had no Python equivalent.
 
 ##### Rust port — TODO
 
 The Rust port is being delivered incrementally. Tracked work:
 
 **Part 1 — got-core / got-cli scaffold (this PR)**
-- [x] Cargo workspace with `got-core` library and `got-cli` (`git-of-theseus-analyze-rs`) binary
+- [x] Cargo workspace with `got-core` library and `got-cli` (`git-of-theseus-analyze`) binary
 - [x] Commit walking, interval-based commit sampling, tree enumeration, `--only` / `--ignore` / default-filetype filtering
 - [x] Default-filetype list snapshot generated from pygments via `scripts/gen_filetypes.py`
 - [x] Parallel blame via rayon with per-thread `git2::Repository`
 - [x] Fast diff that skips blame on unchanged blobs
 - [x] JSON output matching `cohorts.json` / `exts.json` / `authors.json` / `dirs.json` / `domains.json` / `survival.json`, consumable by the existing Python plot scripts
-- [x] Multi-repository analysis (`git-of-theseus-analyze-rs repo-a repo-b ...`) and multi-input line/stack/survival plots, matching the Python CLI
+- [x] Multi-repository analysis (`git-of-theseus-analyze repo-a repo-b ...`) and multi-input line/stack/survival plots, matching the Python CLI
 - [x] `--merge`: combine multiple repositories into a single, summed set of output files (Rust-only; no Python equivalent yet)
 - [x] Unit + end-to-end integration tests; `fmt --check`, `clippy -D warnings`, build/test in CI; CI cross-checks Rust JSON via the Python plot scripts
 
@@ -149,18 +143,18 @@ The Rust port is being delivered incrementally. Tracked work:
 - [ ] Optional: GitHub GraphQL `blame` API as an alternate backend (no proxy, rate-limited)
 
 **Part 3 — Rust ports of plot CLIs**
-- [x] `git-of-theseus-line-plot-rs`, `git-of-theseus-stack-plot-rs`, `git-of-theseus-survival-plot-rs` binaries built on [`plotters`](https://crates.io/crates/plotters), with PNG + SVG output and exp-fit parity to scipy's Nelder-Mead (verified to 6 decimals on a real `survival.json`)
+- [x] `git-of-theseus-line-plot`, `git-of-theseus-stack-plot`, `git-of-theseus-survival-plot` binaries built on [`plotters`](https://crates.io/crates/plotters), with PNG + SVG output and exp-fit parity to scipy's Nelder-Mead (verified to 6 decimals on a real `survival.json`)
 - [ ] Switch `plotters` to `default-features = false` + `ab_glyph` + a bundled font (e.g. DejaVuSans) so the Rust CLI no longer requires system `fontconfig`/`freetype` (and drop those deps from `flake.nix`)
 - [ ] Wire `--display` to actually open the rendered file (e.g. via the `open` crate / `xdg-open`); currently a no-op that prints a hint
 - [ ] Visual-regression snapshot tests for the rendered PNGs (golden-file diff with a small tolerance) once the rendering style stabilizes
 - [ ] Investigate visual parity with matplotlib's `ggplot` style: tick density, axis label font size, legend placement
-- [ ] Decide whether to keep the Python plot scripts or deprecate them once Rust parity is reached
+- [x] Deprecate and remove the Python plot scripts now that Rust parity is reached
 
 **Part 4 — Cutover**
-- [ ] Rename `git-of-theseus-analyze-rs` → `git-of-theseus-analyze` once feature parity and a release strategy are agreed
+- [x] Rename `git-of-theseus-analyze-rs` → `git-of-theseus-analyze` now that the Rust CLI ships under the original command names
 - [ ] Ship pre-built binaries (release workflow + GitHub Releases)
-- [ ] Update `Dockerfile`, `flake.nix`, `Justfile`, and the existing CI matrix accordingly
-- [ ] Remove the Python `analyze.py` (and possibly the rest of the Python package) after a deprecation window
+- [x] Update `Dockerfile`, `flake.nix`, `Justfile`, and the existing CI matrix accordingly
+- [x] Remove the Python `analyze.py` (and the rest of the Python package)
 
 
 ### Step 2 — Generate plots
@@ -189,16 +183,16 @@ git-of-theseus-line-plot <output-dir>/authors.json --normalize
 ### Add event markers
 
 Line and stack plots use calendar-time x axes. Add external event markers
-with a YAML manifest. Both Python and Rust commands accept the same file:
+with a YAML manifest:
 
 ```shell
 git-of-theseus-line-plot <output-dir>/authors.json \
   --events examples/events.yaml --outfile authors-with-events.png
 git-of-theseus-stack-plot <output-dir>/cohorts.json \
   --events examples/events.yaml --outfile cohorts-with-events.png
-git-of-theseus-line-plot-rs <output-dir>/authors.json \
+git-of-theseus-line-plot <output-dir>/authors.json \
   --events examples/events.yaml --outfile authors-with-events.svg
-git-of-theseus-stack-plot-rs <output-dir>/cohorts.json \
+git-of-theseus-stack-plot <output-dir>/cohorts.json \
   --events examples/events.yaml --outfile cohorts-with-events.svg
 ```
 
@@ -219,11 +213,7 @@ PNG files keep the same static chart and key.
 To use a local manifest in PowerShell:
 
 ```powershell
-uv run git-of-theseus-stack-plot .\got\cohorts.json `
-  --events "C:\path\to\model-releases.yaml" `
-  --outfile .\cohorts-with-events.png
-
-cargo run -p got-cli --bin git-of-theseus-stack-plot-rs -- `
+cargo run -p got-cli --bin git-of-theseus-stack-plot -- `
   .\got\cohorts.json --events "C:\path\to\model-releases.yaml" `
   --outfile .\cohorts-with-events.svg
 ```
@@ -239,7 +229,7 @@ Extra fields, such as `window`, `coverage`, `limitations`, and per-event
 evidence, are allowed. The `window` field is metadata; it does not crop the
 plot. An omitted schema version defaults to 1.
 
-`provider` controls a stable line color, shared by Python and Rust.
+`provider` controls a stable line color.
 `event` controls the line style. The key also states the provider and
 event type, so it does not rely on color alone. Events outside the plot
 range are ignored and do not expand the axis. An empty manifest, or one
@@ -253,18 +243,12 @@ not calendar-time data: its x axis is elapsed code age in years, so
 `--events` is rejected by both survival plot commands. The tools read the
 manifest locally. They do not fetch or verify the sources in it.
 
-Python callers can pass `events="model-releases.yaml"` to `line_plot` or
-`stack_plot`. Rust callers can set `events: Some(path)` in
-`LinePlotOptions` or `StackPlotOptions`. Omit `events` to keep the normal
-plot behavior.
-
-For low-level matplotlib use, pass the dictionary returned by
-`add_event_annotations` to `save_event_plot(figure, path, tooltips)`.
-This save helper adds the SVG tooltip metadata.
+Rust callers can set `events: Some(path)` in `LinePlotOptions` or
+`StackPlotOptions`. Omit `events` to keep the normal plot behavior.
 
 Shared fixtures in `tests/fixtures` cover dates, same-day events, all event
 types, and out-of-range events. Run the tests with
-`uv run --extra dev pytest` and `cargo test --workspace --locked`.
+`cargo test --workspace --locked`.
 
 All commands accept `--help` for the full list of options.
 
@@ -333,13 +317,6 @@ git log --pretty=format:"%an %ae" | sort | uniq
 **Windows PowerShell**
 ```powershell
 git log --pretty=format:"%an %ae" | Sort-Object | Select-Object -Unique
-```
-
-## Troubleshooting
-
-**`AttributeError: Unknown property labels`** — upgrade matplotlib:
-```shell
-pip install matplotlib --upgrade
 ```
 
 ## Related Projects

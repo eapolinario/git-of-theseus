@@ -4,9 +4,9 @@ use std::process::Command;
 
 use tempfile::tempdir;
 
-const LINE: &str = env!("CARGO_BIN_EXE_git-of-theseus-line-plot-rs");
-const STACK: &str = env!("CARGO_BIN_EXE_git-of-theseus-stack-plot-rs");
-const SURVIVAL: &str = env!("CARGO_BIN_EXE_git-of-theseus-survival-plot-rs");
+const LINE: &str = env!("CARGO_BIN_EXE_git-of-theseus-line-plot");
+const STACK: &str = env!("CARGO_BIN_EXE_git-of-theseus-stack-plot");
+const SURVIVAL: &str = env!("CARGO_BIN_EXE_git-of-theseus-survival-plot");
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

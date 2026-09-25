@@ -8,19 +8,19 @@ repository.workspace = true
 rust-version.workspace = true
 
 [[bin]]
-name = "git-of-theseus-analyze-rs"
+name = "git-of-theseus-analyze"
 path = "src/main.rs"
 
 [[bin]]
-name = "git-of-theseus-line-plot-rs"
+name = "git-of-theseus-line-plot"
 path = "src/bin/line_plot.rs"
 
 [[bin]]
-name = "git-of-theseus-stack-plot-rs"
+name = "git-of-theseus-stack-plot"
 path = "src/bin/stack_plot.rs"
 
 [[bin]]
-name = "git-of-theseus-survival-plot-rs"
+name = "git-of-theseus-survival-plot"
 path = "src/bin/survival_plot.rs"
 
 

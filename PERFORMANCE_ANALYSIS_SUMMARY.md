@@ -1,4 +1,4 @@
-# Performance Analysis: git-of-theseus-analyze-rs is I/O-Bound
+# Performance Analysis: git-of-theseus-analyze is I/O-Bound
 
 ## TL;DR
 
@@ -144,7 +144,7 @@ Evidence:
 Enable timing measurements with:
 
 ```bash
-$ git-of-theseus-analyze-rs --measure-time --outdir /tmp/output <repo>
+$ git-of-theseus-analyze --measure-time --outdir /tmp/output <repo>
 ```
 
 Example output:

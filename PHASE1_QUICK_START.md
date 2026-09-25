@@ -9,7 +9,7 @@
 Measure current performance:
 ```bash
 cd <your-repo>
-git-of-theseus-analyze-rs \
+git-of-theseus-analyze \
   --measure-time \
   --outdir /tmp/baseline \
   .
@@ -44,12 +44,12 @@ dir C:\ssd\myrepo\.git | measure-object -sum -property length
 
 Change from:
 ```bash
-git-of-theseus-analyze-rs --interval 604800 --outdir output repo
+git-of-theseus-analyze --interval 604800 --outdir output repo
 ```
 
 To:
 ```bash
-git-of-theseus-analyze-rs --interval 1209600 --outdir output repo
+git-of-theseus-analyze --interval 1209600 --outdir output repo
 #                                     ↑
 #                          2 weeks in seconds (2 × 604800)
 ```
@@ -76,7 +76,7 @@ git-of-theseus-analyze-rs --interval 1209600 --outdir output repo
 wmic cpu get NumberOfCores
 
 # Use that number for --procs
-git-of-theseus-analyze-rs \
+git-of-theseus-analyze \
   --procs 32 \              # If you have 32 cores
   --outdir output \
   repo
@@ -94,7 +94,7 @@ Run with all Phase 1 optimizations:
 $repo = "C:\ssd\myrepo"  # Local SSD repo
 $outdir = "C:\temp\optimized"
 
-git-of-theseus-analyze-rs `
+git-of-theseus-analyze `
   --interval 1209600 `      # 2-week sampling
   --procs 32 `              # Max parallelism
   --measure-time `          # Show timing breakdown
@@ -131,7 +131,7 @@ Blame (I/O): same work, but overlapped with parallelism
 
 ```powershell
 # One-liner with all optimizations
-git-of-theseus-analyze-rs `
+git-of-theseus-analyze `
   --interval 1209600 `
   --procs 32 `
   --measure-time `
@@ -159,7 +159,7 @@ Verify timing improved:
 
 ```bash
 # Run the optimized command
-git-of-theseus-analyze-rs --measure-time --interval 1209600 --procs 32 --outdir output C:\ssd\repo
+git-of-theseus-analyze --measure-time --interval 1209600 --procs 32 --outdir output C:\ssd\repo
 
 # Compare output
 # Before: Total: 2197.8ms
@@ -193,13 +193,13 @@ robocopy "\\network\path\repo" "C:\ssd\repo" /MIR /W:0 /R:1
 ```bash
 # Use 2-week interval + parallelism instead
 # This alone gives 2x + 1.2x ≈ 2.4x speedup
-git-of-theseus-analyze-rs --interval 1209600 --procs 32 --outdir output <original-repo>
+git-of-theseus-analyze --interval 1209600 --procs 32 --outdir output <original-repo>
 ```
 
 ### "Only have HDD available (no SSD)"
 ```bash
 # Focus on reducing interval instead
-git-of-theseus-analyze-rs --interval 1209600 --interval 2419200 --procs 32 --outdir output <hdd-repo>
+git-of-theseus-analyze --interval 1209600 --interval 2419200 --procs 32 --outdir output <hdd-repo>
 # 4-week interval: 4x faster
 # Max parallelism: 1.2x
 # Total: ~5x speedup without needing SSD
@@ -208,7 +208,7 @@ git-of-theseus-analyze-rs --interval 1209600 --interval 2419200 --procs 32 --out
 ### "Not seeing 6x speedup"
 ```bash
 # Check what's actually taking time
-git-of-theseus-analyze-rs --measure-time --outdir output <repo>
+git-of-theseus-analyze --measure-time --outdir output <repo>
 
 # If Blame (I/O) is <95%, something else is the bottleneck
 # If Blame (I/O) is >95%, Phase 1 optimizations should work

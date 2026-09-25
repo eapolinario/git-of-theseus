@@ -1,6 +1,6 @@
 # git-of-theseus Performance Optimization Index
 
-Complete guide to understanding and optimizing the I/O-bound `git-of-theseus-analyze-rs` binary.
+Complete guide to understanding and optimizing the I/O-bound `git-of-theseus-analyze` binary.
 
 ---
 
@@ -90,7 +90,7 @@ Complete guide to understanding and optimizing the I/O-bound `git-of-theseus-ana
 **Quick Start:**
 ```bash
 # Phase 1: 6x speedup, zero coding
-git-of-theseus-analyze-rs \
+git-of-theseus-analyze \
   --interval 1209600 \      # 2-week sampling
   --procs 32 \              # Max parallelism
   --outdir output \
@@ -193,7 +193,7 @@ cd S:\repos-personal\git-of-theseus
 cargo build --release
 
 # Run with timing
-.\target\release\git-of-theseus-analyze-rs.exe \
+.\target\release\git-of-theseus-analyze.exe \
   --measure-time \
   --outdir /tmp/output \
   <repo>
@@ -242,13 +242,13 @@ START
 
 ### Before Optimization
 ```bash
-git-of-theseus-analyze-rs --measure-time --outdir /tmp/before repo
+git-of-theseus-analyze --measure-time --outdir /tmp/before repo
 # Expected: ~2000ms (99.6% I/O)
 ```
 
 ### After Phase 1
 ```bash
-git-of-theseus-analyze-rs \
+git-of-theseus-analyze \
   --interval 1209600 \
   --procs 32 \
   --measure-time \
@@ -260,7 +260,7 @@ git-of-theseus-analyze-rs \
 ### After Phase 2 (Prefetch/Pipeline)
 ```bash
 # (After code changes are committed)
-git-of-theseus-analyze-rs \
+git-of-theseus-analyze \
   --interval 1209600 \
   --procs 32 \
   --measure-time \

@@ -1,4 +1,4 @@
-//! `git-of-theseus-stack-plot-rs` — Rust port of
+//! `git-of-theseus-stack-plot` — Rust port of
 //! `git_of_theseus.stack_plot.stack_plot_cmdline`.
 
 use std::path::PathBuf;
@@ -8,11 +8,7 @@ use clap::Parser;
 use got_plot::{stack_plot, StackPlotOptions};
 
 #[derive(Debug, Parser)]
-#[command(
-    name = "git-of-theseus-stack-plot-rs",
-    version,
-    about = "Plot stack plot"
-)]
+#[command(name = "git-of-theseus-stack-plot", version, about = "Plot stack plot")]
 struct Cli {
     /// Display plot (currently a no-op; the file is always written).
     #[arg(long, default_value_t = false)]

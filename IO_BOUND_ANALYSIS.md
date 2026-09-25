@@ -1,4 +1,4 @@
-# Evidence: git-of-theseus-analyze-rs is I/O-Bound, Not Compute-Bound
+# Evidence: git-of-theseus-analyze is I/O-Bound, Not Compute-Bound
 
 ## Executive Summary
 The analysis binary is fundamentally **I/O-bound**, not compute-bound. Heavy git operations (blame, tree walks, commit history traversal) dominate execution time, while actual computation (line counting, histogram aggregation) is negligible by comparison.
