@@ -784,7 +784,7 @@ fn make_bar(quiet: bool, msg: &str, total: Option<u64>) -> ProgressBar {
     };
     let style = match total {
         Some(_) => {
-            ProgressStyle::with_template("{msg:<55} [{bar:30}] {pos}/{len} ({elapsed_precise})")
+            ProgressStyle::with_template("{msg:<55} [{bar:30}] {pos}/{len} ({elapsed_precise} / ETA {eta_precise})")
         }
         None => ProgressStyle::with_template("{msg:<55} {pos} ({elapsed_precise})"),
     };
