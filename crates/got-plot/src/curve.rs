@@ -11,6 +11,7 @@
 //! }
 //! ```
 
+use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::path::Path;
 
@@ -70,6 +71,78 @@ impl Curve {
             y: raw.y,
             ts,
             labels: raw.labels,
+        })
+    }
+
+    /// Loads and merges one or more curve JSON files, aligning them onto a
+    /// shared, sorted timestamp axis. Mirrors
+    /// `git_of_theseus.utils.load_curve_inputs`:
+    ///
+    /// - With a single path, this is equivalent to [`Curve::load`].
+    /// - With multiple paths, the union of all timestamps (sorted) becomes
+    ///   the new `ts` axis. Each source series is re-sampled onto that
+    ///   axis by carrying its last known value forward (starting at 0
+    ///   before the source's first sample), and its label is prefixed
+    ///   with the source's directory name (e.g. `"repo-one: alpha"`).
+    pub fn load_many<P: AsRef<Path>>(paths: &[P]) -> Result<Self> {
+        anyhow::ensure!(!paths.is_empty(), "at least one input file is required");
+        if paths.len() == 1 {
+            return Self::load(&paths[0]);
+        }
+
+        struct Loaded {
+            source: String,
+            ts: Vec<NaiveDateTime>,
+            y: Vec<Vec<u64>>,
+            labels: Vec<String>,
+        }
+
+        let mut loaded = Vec::with_capacity(paths.len());
+        let mut all_ts: BTreeSet<NaiveDateTime> = BTreeSet::new();
+        for p in paths {
+            let path = p.as_ref();
+            let single = Self::load(path)?;
+            all_ts.extend(single.ts.iter().copied());
+            let source = path
+                .parent()
+                .and_then(|d| d.file_name())
+                .and_then(|s| s.to_str())
+                .filter(|s| !s.is_empty())
+                .or_else(|| path.file_stem().and_then(|s| s.to_str()))
+                .unwrap_or("input")
+                .to_string();
+            loaded.push(Loaded {
+                source,
+                ts: single.ts,
+                y: single.y,
+                labels: single.labels,
+            });
+        }
+
+        let timestamps: Vec<NaiveDateTime> = all_ts.into_iter().collect();
+        let mut labels = Vec::new();
+        let mut y = Vec::new();
+        for entry in loaded {
+            let positions: HashMap<NaiveDateTime, usize> =
+                entry.ts.iter().enumerate().map(|(i, t)| (*t, i)).collect();
+            for (label, row) in entry.labels.iter().zip(entry.y.iter()) {
+                let mut aligned = Vec::with_capacity(timestamps.len());
+                let mut current = 0u64;
+                for t in &timestamps {
+                    if let Some(&idx) = positions.get(t) {
+                        current = row[idx];
+                    }
+                    aligned.push(current);
+                }
+                labels.push(format!("{}: {}", entry.source, label));
+                y.push(aligned);
+            }
+        }
+
+        Ok(Curve {
+            y,
+            ts: timestamps,
+            labels,
         })
     }
 
@@ -262,5 +335,59 @@ mod tests {
         assert_eq!(norm[1][0], 0.0);
         assert!((norm[0][1] - 50.0).abs() < 1e-9);
         assert!((norm[1][1] - 50.0).abs() < 1e-9);
+    }
+
+    /// Multi-repo support (issue #16): `load_many` aligns series from
+    /// several curve files onto the union of their timestamps, carrying
+    /// forward the last known value, and prefixes labels with the source
+    /// directory name.
+    #[test]
+    fn load_many_aligns_repositories_and_prefixes_labels() {
+        let dir = tempfile::tempdir().unwrap();
+        let first_dir = dir.path().join("first");
+        let second_dir = dir.path().join("second");
+        std::fs::create_dir_all(&first_dir).unwrap();
+        std::fs::create_dir_all(&second_dir).unwrap();
+
+        let first = first_dir.join("cohorts.json");
+        let second = second_dir.join("cohorts.json");
+        std::fs::write(
+            &first,
+            r#"{"y": [[2, 4]], "ts": ["2020-01-01T00:00:00", "2020-01-03T00:00:00"], "labels": ["Code added in 2020"]}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            &second,
+            r#"{"y": [[3, 5]], "ts": ["2020-01-02T00:00:00", "2020-01-03T00:00:00"], "labels": ["Code added in 2020"]}"#,
+        )
+        .unwrap();
+
+        let curve = Curve::load_many(&[first, second]).unwrap();
+
+        assert_eq!(
+            curve.ts,
+            vec![dt(2020, 1, 1), dt(2020, 1, 2), dt(2020, 1, 3)]
+        );
+        assert_eq!(
+            curve.labels,
+            vec!["first: Code added in 2020", "second: Code added in 2020"]
+        );
+        assert_eq!(curve.y, vec![vec![2, 2, 4], vec![0, 3, 5]]);
+    }
+
+    /// A single input path should behave exactly like `load`, with no
+    /// label prefixing.
+    #[test]
+    fn load_many_with_a_single_path_does_not_prefix_labels() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("cohorts.json");
+        std::fs::write(
+            &path,
+            r#"{"y": [[1, 2]], "ts": ["2020-01-01T00:00:00", "2020-01-02T00:00:00"], "labels": ["alpha"]}"#,
+        )
+        .unwrap();
+
+        let curve = Curve::load_many(&[path]).unwrap();
+        assert_eq!(curve.labels, vec!["alpha"]);
     }
 }

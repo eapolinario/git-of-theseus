@@ -19,6 +19,6 @@ pub mod output;
 pub mod path_filter;
 
 pub use analyze::{
-    analyze, analyze_in_memory, write_outputs, AnalyzeOptions, AnalyzeResult, SurvivalSeries,
-    DEFAULT_INTERVAL_SECS,
+    analyze, analyze_in_memory, analyze_many, write_outputs, AnalyzeOptions, AnalyzeResult,
+    SurvivalSeries, DEFAULT_INTERVAL_SECS,
 };

@@ -23,7 +23,7 @@ fn writes_nonempty_png() {
     let input = write_fixture(dir.path());
     let output = dir.path().join("out.png");
     let opts = LinePlotOptions {
-        input,
+        inputs: vec![input],
         output: output.clone(),
         max_n: 20,
         normalize: false,
@@ -44,7 +44,7 @@ fn writes_svg() {
     let input = write_fixture(dir.path());
     let output = dir.path().join("out.svg");
     let opts = LinePlotOptions {
-        input,
+        inputs: vec![input],
         output: output.clone(),
         max_n: 20,
         normalize: true,
@@ -62,7 +62,7 @@ fn no_events_keeps_the_original_full_canvas_background() {
     let input = write_fixture(dir.path());
     let output = dir.path().join("out.svg");
     let opts = LinePlotOptions {
-        input,
+        inputs: vec![input],
         output: output.clone(),
         max_n: 20,
         normalize: false,

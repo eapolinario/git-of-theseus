@@ -32,7 +32,7 @@ fn writes_nonempty_png() {
     let input = write_fixture(dir.path(), 3);
     let output = dir.path().join("stack.png");
     let opts = StackPlotOptions {
-        input,
+        inputs: vec![input],
         output: output.clone(),
         max_n: 20,
         normalize: false,
@@ -54,7 +54,7 @@ fn aggregates_other_when_above_max_n() {
     let input = write_fixture(dir.path(), 5);
     let output = dir.path().join("stack.svg");
     let opts = StackPlotOptions {
-        input,
+        inputs: vec![input],
         output: output.clone(),
         max_n: 2,
         normalize: true,

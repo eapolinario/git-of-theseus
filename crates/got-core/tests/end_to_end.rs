@@ -7,7 +7,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use got_core::{analyze, AnalyzeOptions};
+use got_core::{analyze, analyze_many, AnalyzeOptions};
 use tempfile::tempdir;
 
 fn run_with_date(repo: &Path, date: &str, args: &[&str]) {
@@ -117,4 +117,91 @@ fn analyze_tiny_repo_end_to_end() {
     let survival: BTreeMap<String, Vec<(i64, u64)>> =
         serde_json::from_slice(&fs::read(outdir.join("survival.json")).unwrap()).unwrap();
     let _ = survival;
+}
+
+/// Creates a tiny one-commit repo named `name` under `parent`, and returns
+/// its path. Used by the multi-repo test below.
+fn make_tiny_repo(parent: &Path, name: &str) -> std::path::PathBuf {
+    let repo = parent.join(name);
+    fs::create_dir_all(&repo).unwrap();
+    run(&repo, &["init", "-q", "-b", "main"]);
+    run(&repo, &["config", "commit.gpgsign", "false"]);
+    fs::write(repo.join("a.py"), "print('hi')\n").unwrap();
+    run(&repo, &["add", "a.py"]);
+    run_with_date(
+        &repo,
+        "2020-01-15T00:00:00Z",
+        &["commit", "-q", "-m", "first"],
+    );
+    repo
+}
+
+#[test]
+fn analyze_many_writes_one_subdirectory_per_repository() {
+    let dir = tempdir().unwrap();
+    let repo_one = make_tiny_repo(dir.path(), "repo-one");
+    let repo_two = make_tiny_repo(dir.path(), "repo-two");
+
+    let outdir = dir.path().join("out");
+    let template = AnalyzeOptions {
+        branch: "main".into(),
+        outdir: outdir.clone(),
+        quiet: true,
+        procs: 1,
+        ..Default::default()
+    };
+    let results = analyze_many(&[repo_one, repo_two], &template).unwrap();
+    assert_eq!(results.len(), 2);
+
+    for name in ["repo-one", "repo-two"] {
+        let repo_outdir = outdir.join(name);
+        for file in ["cohorts.json", "exts.json", "authors.json", "survival.json"] {
+            let bytes = fs::read(repo_outdir.join(file))
+                .unwrap_or_else(|e| panic!("reading {name}/{file}: {e}"));
+            let _: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        }
+    }
+}
+
+#[test]
+fn analyze_many_dedupes_repositories_with_the_same_directory_name() {
+    let dir = tempdir().unwrap();
+    let group_a = dir.path().join("group-a");
+    let group_b = dir.path().join("group-b");
+    fs::create_dir_all(&group_a).unwrap();
+    fs::create_dir_all(&group_b).unwrap();
+    let repo_one = make_tiny_repo(&group_a, "repo");
+    let repo_two = make_tiny_repo(&group_b, "repo");
+
+    let outdir = dir.path().join("out");
+    let template = AnalyzeOptions {
+        branch: "main".into(),
+        outdir: outdir.clone(),
+        quiet: true,
+        procs: 1,
+        ..Default::default()
+    };
+    analyze_many(&[repo_one, repo_two], &template).unwrap();
+
+    assert!(outdir.join("repo").join("cohorts.json").exists());
+    assert!(outdir.join("repo-2").join("cohorts.json").exists());
+}
+
+#[test]
+fn analyze_many_with_a_single_repo_matches_analyze() {
+    let dir = tempdir().unwrap();
+    let repo = make_tiny_repo(dir.path(), "solo");
+
+    let outdir = dir.path().join("out");
+    let template = AnalyzeOptions {
+        branch: "main".into(),
+        outdir: outdir.clone(),
+        quiet: true,
+        procs: 1,
+        ..Default::default()
+    };
+    let results = analyze_many(std::slice::from_ref(&repo), &template).unwrap();
+    assert_eq!(results.len(), 1);
+    // Single-repo output goes directly to `outdir`, not a named subdirectory.
+    assert!(outdir.join("cohorts.json").exists());
 }

@@ -116,6 +116,61 @@ pub fn analyze(options: &AnalyzeOptions) -> Result<AnalyzeResult> {
     Ok(result)
 }
 
+/// Analyzes one or more repositories, mirroring the multi-repo dispatch in
+/// `git_of_theseus.analyze.analyze`.
+///
+/// With a single repository this behaves exactly like calling [`analyze`]
+/// directly with `options.repo_dir` set to it. With multiple repositories,
+/// each one is analyzed independently and its JSON output is written to a
+/// subdirectory of `options.outdir` named after the repository's directory
+/// name (with a `-2`, `-3`, ... suffix on name collisions).
+pub fn analyze_many(repo_dirs: &[PathBuf], options: &AnalyzeOptions) -> Result<Vec<AnalyzeResult>> {
+    anyhow::ensure!(!repo_dirs.is_empty(), "at least one repository is required");
+
+    if repo_dirs.len() == 1 {
+        let mut opts = options.clone();
+        opts.repo_dir = repo_dirs[0].clone();
+        return Ok(vec![analyze(&opts)?]);
+    }
+
+    std::fs::create_dir_all(&options.outdir)
+        .with_context(|| format!("creating outdir {}", options.outdir.display()))?;
+
+    let mut used_names: HashSet<String> = HashSet::new();
+    let mut results = Vec::with_capacity(repo_dirs.len());
+    for repo_dir in repo_dirs {
+        let name = unique_repo_output_name(repo_dir, &mut used_names);
+        let mut opts = options.clone();
+        opts.repo_dir = repo_dir.clone();
+        opts.outdir = options.outdir.join(name);
+        results.push(analyze(&opts)?);
+    }
+    Ok(results)
+}
+
+/// Picks a unique subdirectory name for a repository's output, based on
+/// its (canonicalized, where possible) directory name. Mirrors the
+/// collision handling in the Python `analyze()` dispatcher.
+fn unique_repo_output_name(repo_dir: &Path, used: &mut HashSet<String>) -> String {
+    let base = repo_dir
+        .canonicalize()
+        .unwrap_or_else(|_| repo_dir.to_path_buf())
+        .file_name()
+        .and_then(|s| s.to_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("repository")
+        .to_string();
+
+    let mut name = base.clone();
+    let mut suffix = 2;
+    while used.contains(&name) {
+        name = format!("{base}-{suffix}");
+        suffix += 1;
+    }
+    used.insert(name.clone());
+    name
+}
+
 /// Runs the analysis but does not touch the filesystem. Useful for tests
 /// and embedding in WASM / library contexts.
 pub fn analyze_in_memory(options: &AnalyzeOptions) -> Result<AnalyzeResult> {
