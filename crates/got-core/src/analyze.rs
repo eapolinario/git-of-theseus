@@ -292,6 +292,9 @@ pub fn analyze_in_memory(options: &AnalyzeOptions) -> Result<AnalyzeResult> {
 
     let branch_oid = resolve_branch(&repo, &options.branch, options.quiet)?;
     let filter = PathFilter::new(&options.only, &options.ignore, options.all_filetypes)?;
+    // Built once and reused for both the parallel tree walk (step 3) and
+    // the parallel blame (step 4).
+    let pool = build_thread_pool(options.procs)?;
 
     // Step 1: walk every reachable commit on the branch, build cohort map
     // and the up-front `curve_key_tuples` for cohort / author / domain.
@@ -345,27 +348,24 @@ pub fn analyze_in_memory(options: &AnalyzeOptions) -> Result<AnalyzeResult> {
     sampled.reverse(); // chronological ascending
 
     // Step 3: for each sampled commit, walk the tree and collect blob
-    // entries that pass the path filter. Cache the entries; also build
-    // `ext_set` / `dir_set` for the curve keys.
+    // entries that pass the path filter (in parallel, one worker thread
+    // per sampled commit). Cache the entries; also build `ext_set` /
+    // `dir_set` for the curve keys.
     let mut ext_set: HashSet<String> = HashSet::new();
     let mut dir_set: HashSet<String> = HashSet::new();
-    let mut entries_per_commit: Vec<Vec<TreeEntry>> = Vec::with_capacity(sampled.len());
 
     let progress = make_bar(
         options.quiet,
         "Discovering entries",
         Some(sampled.len() as u64),
     );
-    for (oid, _) in &sampled {
-        let commit = repo.find_commit(*oid)?;
-        let tree = commit.tree()?;
-        let entries = collect_blob_entries(&repo, &tree, &filter)?;
-        for entry in &entries {
+    let mut entries_per_commit =
+        discover_entries(&pool, &options.repo_dir, &sampled, &filter, &progress)?;
+    for entries in &entries_per_commit {
+        for entry in entries {
             ext_set.insert(extension(&entry.path));
             dir_set.insert(top_dir(&entry.path));
         }
-        entries_per_commit.push(entries);
-        progress.inc(1);
     }
     progress.finish_and_clear();
 
@@ -419,8 +419,6 @@ pub fn analyze_in_memory(options: &AnalyzeOptions) -> Result<AnalyzeResult> {
         "Analyzing commits (blame)",
         Some(total_entries),
     );
-
-    let pool = build_thread_pool(options.procs)?;
 
     for (commit_idx, (commit_oid, commit_ts)) in sampled.iter().enumerate() {
         let entries = std::mem::take(&mut entries_per_commit[commit_idx]);
@@ -642,6 +640,40 @@ fn build_thread_pool(procs: usize) -> Result<rayon::ThreadPool> {
         .map_err(|e| anyhow!("building thread pool: {e}"))
 }
 
+/// Walks the tree of each sampled commit in parallel and collects the blob
+/// entries that pass `filter`, returning one entry list per sampled commit
+/// in the same order as `sampled`. Each worker thread opens its own
+/// `git2::Repository` because `Repository` is not `Sync`.
+fn discover_entries(
+    pool: &rayon::ThreadPool,
+    repo_dir: &Path,
+    sampled: &[(Oid, i64)],
+    filter: &PathFilter,
+    progress: &ProgressBar,
+) -> Result<Vec<Vec<TreeEntry>>> {
+    let results: Vec<Result<Vec<TreeEntry>>> = pool.install(|| {
+        sampled
+            .par_iter()
+            .map_init(
+                || Repository::open(repo_dir).context("opening repo on worker"),
+                |repo_result, (oid, _)| -> Result<Vec<TreeEntry>> {
+                    let repo = repo_result.as_ref().map_err(|e| anyhow!("{e}"))?;
+                    let commit = repo.find_commit(*oid)?;
+                    let tree = commit.tree()?;
+                    let entries = collect_blob_entries(repo, &tree, filter)?;
+                    progress.inc(1);
+                    Ok(entries)
+                },
+            )
+            .collect()
+    });
+    let mut out = Vec::with_capacity(results.len());
+    for r in results {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
 /// Blames each entry at `commit_oid` and returns `(path, histogram)` pairs.
 /// Each worker thread opens its own `git2::Repository` because `Repository`
 /// is not `Sync`.
@@ -813,5 +845,99 @@ mod tests {
             merged.survival.get("deadbeef"),
             Some(&vec![(1000, 9), (2000, 7), (3000, 5)])
         );
+    }
+
+    /// Regression test for parallel tree-walk discovery: runs
+    /// `discover_entries` on a pool with more worker threads than there are
+    /// sampled commits (so every thread picks up work) and checks the
+    /// result against a plain sequential walk of the same commits.
+    #[test]
+    fn discover_entries_matches_sequential_across_multiple_workers() {
+        use std::process::Command;
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let repo_path = dir.path();
+
+        let run = |args: &[&str], date: &str| {
+            let status = Command::new("git")
+                .args(args)
+                .current_dir(repo_path)
+                .env("GIT_AUTHOR_NAME", "Alice")
+                .env("GIT_AUTHOR_EMAIL", "alice@example.com")
+                .env("GIT_COMMITTER_NAME", "Alice")
+                .env("GIT_COMMITTER_EMAIL", "alice@example.com")
+                .env("GIT_AUTHOR_DATE", date)
+                .env("GIT_COMMITTER_DATE", date)
+                .status()
+                .expect("git available");
+            assert!(status.success(), "git {args:?} failed");
+        };
+        let head_oid = || -> Oid {
+            let output = Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(repo_path)
+                .output()
+                .expect("git available");
+            assert!(output.status.success());
+            Oid::from_str(String::from_utf8(output.stdout).unwrap().trim()).unwrap()
+        };
+
+        run(&["init", "-q", "-b", "main"], "2024-01-01T00:00:00Z");
+        run(
+            &["config", "commit.gpgsign", "false"],
+            "2024-01-01T00:00:00Z",
+        );
+
+        // Five commits, each touching several files. Sampled against a
+        // 4-worker pool this guarantees every thread picks up at least one
+        // commit, so the test actually exercises cross-thread dispatch
+        // rather than a pool that happens to run everything on one thread.
+        const N_COMMITS: usize = 5;
+        const N_FILES: usize = 4;
+        let mut sampled: Vec<(Oid, i64)> = Vec::new();
+        for i in 0..N_COMMITS {
+            for f in 0..N_FILES {
+                std::fs::write(
+                    repo_path.join(format!("file{f}.txt")),
+                    format!("commit {i} touches file {f}\nline two\n"),
+                )
+                .unwrap();
+            }
+            let date = format!("2024-01-{:02}T00:00:00Z", i + 1);
+            run(&["add", "-A"], &date);
+            run(&["commit", "-q", "-m", &format!("commit {i}")], &date);
+            sampled.push((head_oid(), i as i64));
+        }
+
+        let repo = Repository::open(repo_path).unwrap();
+        let filter = PathFilter::new(&[], &[], true).unwrap();
+        let progress = ProgressBar::hidden();
+
+        // Sequential baseline: walk each sampled commit's tree directly.
+        let sequential: Vec<Vec<(String, Oid)>> = sampled
+            .iter()
+            .map(|(oid, _)| {
+                let commit = repo.find_commit(*oid).unwrap();
+                let tree = commit.tree().unwrap();
+                collect_blob_entries(&repo, &tree, &filter)
+                    .unwrap()
+                    .into_iter()
+                    .map(|e| (e.path, e.blob_oid))
+                    .collect()
+            })
+            .collect();
+
+        // Parallel version, run on a pool with more worker threads than
+        // there are sampled commits, so real cross-thread dispatch happens.
+        let pool = build_thread_pool(4).unwrap();
+        let parallel: Vec<Vec<(String, Oid)>> =
+            discover_entries(&pool, repo_path, &sampled, &filter, &progress)
+                .unwrap()
+                .into_iter()
+                .map(|entries| entries.into_iter().map(|e| (e.path, e.blob_oid)).collect())
+                .collect();
+
+        assert_eq!(parallel, sequential);
     }
 }
