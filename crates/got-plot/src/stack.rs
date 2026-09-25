@@ -7,6 +7,10 @@
 //!
 //! Output format is determined by the file extension of `output`:
 //! `.svg` produces SVG, anything else produces PNG.
+//!
+//! Accepts one or more input curve files; with multiple inputs, series are
+//! aligned onto a shared timestamp axis and labels are prefixed with the
+//! source repository's directory name (see [`Curve::load_many`]).
 
 use std::path::{Path, PathBuf};
 
@@ -22,7 +26,7 @@ use crate::events::{save_event_svg, EventLayout, SvgTooltip, MARGIN, X_LABEL_ARE
 /// `git-of-theseus-stack-plot`.
 #[derive(Debug, Clone)]
 pub struct StackPlotOptions {
-    pub input: PathBuf,
+    pub inputs: Vec<PathBuf>,
     pub output: PathBuf,
     /// Maximum number of bands to draw; extras are summed into `"other"`.
     pub max_n: usize,
@@ -34,7 +38,7 @@ pub struct StackPlotOptions {
 impl Default for StackPlotOptions {
     fn default() -> Self {
         Self {
-            input: PathBuf::new(),
+            inputs: Vec::new(),
             output: PathBuf::from("stack_plot.png"),
             max_n: 20,
             normalize: false,
@@ -45,7 +49,7 @@ impl Default for StackPlotOptions {
 
 /// Render the stack plot. Returns the path that was written.
 pub fn stack_plot(opts: &StackPlotOptions) -> Result<PathBuf> {
-    let curve = Curve::load(&opts.input)?;
+    let curve = Curve::load_many(&opts.inputs)?;
     let curve = curve.top_n(opts.max_n, /* aggregate_other = */ true);
     let series_f64: Vec<Vec<f64>> = if opts.normalize {
         curve.normalize()

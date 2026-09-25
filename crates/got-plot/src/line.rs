@@ -3,6 +3,10 @@
 //! Renders one line per label, optionally normalized to per-timestamp
 //! share-of-total in percent. Output format is determined by the file
 //! extension of `output`: `.svg` produces SVG, anything else produces PNG.
+//!
+//! Accepts one or more input curve files; with multiple inputs, series are
+//! aligned onto a shared timestamp axis and labels are prefixed with the
+//! source repository's directory name (see [`Curve::load_many`]).
 
 use std::path::{Path, PathBuf};
 
@@ -18,7 +22,7 @@ use crate::events::{save_event_svg, EventLayout, SvgTooltip, MARGIN, X_LABEL_ARE
 /// `git-of-theseus-line-plot`.
 #[derive(Debug, Clone)]
 pub struct LinePlotOptions {
-    pub input: PathBuf,
+    pub inputs: Vec<PathBuf>,
     pub output: PathBuf,
     /// Maximum number of series to draw; extras are dropped (not aggregated
     /// into "other" — line_plot.py drops them).
@@ -31,7 +35,7 @@ pub struct LinePlotOptions {
 impl Default for LinePlotOptions {
     fn default() -> Self {
         Self {
-            input: PathBuf::new(),
+            inputs: Vec::new(),
             output: PathBuf::from("line_plot.png"),
             max_n: 20,
             normalize: false,
@@ -42,7 +46,7 @@ impl Default for LinePlotOptions {
 
 /// Render the line plot. Returns the path that was written.
 pub fn line_plot(opts: &LinePlotOptions) -> Result<PathBuf> {
-    let curve = Curve::load(&opts.input)?;
+    let curve = Curve::load_many(&opts.inputs)?;
     // line_plot.py computes y_sums BEFORE trimming and divides the kept
     // top-N rows by those untrimmed column totals, so kept shares do not
     // sum to 100% when some series were dropped. We must capture the

@@ -235,7 +235,7 @@ class BlameDriver:
         self.run_flag.set()
 
 
-def analyze(
+def _analyze_single(
     repo_dir,
     cohortfm="%Y",
     interval=7 * 24 * 60 * 60,
@@ -550,6 +550,65 @@ def analyze(
     f.close()
 
 
+def analyze(
+    repo_dir,
+    cohortfm="%Y",
+    interval=7 * 24 * 60 * 60,
+    ignore=[],
+    only=[],
+    outdir=".",
+    branch="master",
+    all_filetypes=False,
+    ignore_whitespace=False,
+    procs=2,
+    quiet=False,
+    opt=False,
+):
+    repo_dirs = [repo_dir] if isinstance(repo_dir, (str, os.PathLike)) else list(repo_dir)
+    if not repo_dirs:
+        raise ValueError("at least one repository is required")
+    if len(repo_dirs) == 1:
+        return _analyze_single(
+            repo_dirs[0],
+            cohortfm=cohortfm,
+            interval=interval,
+            ignore=ignore,
+            only=only,
+            outdir=outdir,
+            branch=branch,
+            all_filetypes=all_filetypes,
+            ignore_whitespace=ignore_whitespace,
+            procs=procs,
+            quiet=quiet,
+            opt=opt,
+        )
+
+    os.makedirs(outdir, exist_ok=True)
+    used_names = set()
+    for repo_path in repo_dirs:
+        name = Path(repo_path).resolve().name or "repository"
+        output_name = name
+        suffix = 2
+        while output_name in used_names:
+            output_name = f"{name}-{suffix}"
+            suffix += 1
+        used_names.add(output_name)
+        _analyze_single(
+            repo_path,
+            cohortfm=cohortfm,
+            interval=interval,
+            ignore=ignore,
+            only=only,
+            outdir=os.path.join(outdir, output_name),
+            branch=branch,
+            all_filetypes=all_filetypes,
+            ignore_whitespace=ignore_whitespace,
+            procs=procs,
+            quiet=quiet,
+            opt=opt,
+        )
+
+
 @functools.lru_cache(maxsize=None)
 def get_mailmap_author_name_email(repo, author_name, author_email):
     pre_mailmap_author_email = f"{author_name} <{author_email}>"
@@ -628,7 +687,7 @@ def analyze_cmdline():
         action="store_true",
         help="Generates git commit-graph; Improves performance at the cost of some (~80KB/kCommit) disk space (default: %(default)s)",
     )
-    parser.add_argument("repo_dir")
+    parser.add_argument("repo_dir", nargs="+")
     kwargs = vars(parser.parse_args())
 
     try:

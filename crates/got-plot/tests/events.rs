@@ -227,7 +227,7 @@ fn renders_line_and_stack_png_and_svg_with_all_event_types() {
                     .join(format!("plot-{stacked}-{normalize}.{extension}"));
                 if stacked {
                     stack_plot(&StackPlotOptions {
-                        input: fixture("curve.json"),
+                        inputs: vec![fixture("curve.json")],
                         output: output.clone(),
                         normalize,
                         max_n: 1,
@@ -236,7 +236,7 @@ fn renders_line_and_stack_png_and_svg_with_all_event_types() {
                     .unwrap();
                 } else {
                     line_plot(&LinePlotOptions {
-                        input: fixture("curve.json"),
+                        inputs: vec![fixture("curve.json")],
                         output: output.clone(),
                         normalize,
                         max_n: 1,
@@ -280,14 +280,14 @@ fn no_visible_events_preserve_svg_exactly() {
         let render = |events| {
             if stacked {
                 stack_plot(&StackPlotOptions {
-                    input: fixture("curve.json"),
+                    inputs: vec![fixture("curve.json")],
                     output: output.clone(),
                     events,
                     ..Default::default()
                 })
             } else {
                 line_plot(&LinePlotOptions {
-                    input: fixture("curve.json"),
+                    inputs: vec![fixture("curve.json")],
                     output: output.clone(),
                     events,
                     ..Default::default()
@@ -311,7 +311,7 @@ fn invalid_manifest_does_not_replace_output() {
     let output = dir.path().join("plot.svg");
     fs::write(&output, "existing output").unwrap();
     let opts = LinePlotOptions {
-        input: fixture("curve.json"),
+        inputs: vec![fixture("curve.json")],
         output: output.clone(),
         events: Some(dir.path().join("missing.yaml")),
         ..Default::default()
@@ -351,7 +351,7 @@ fn tooltip_metadata_is_plain_xml_text() {
     );
     fs::write(&input, manifest).unwrap();
     line_plot(&LinePlotOptions {
-        input: fixture("curve.json"),
+        inputs: vec![fixture("curve.json")],
         output: output.clone(),
         events: Some(input),
         ..Default::default()
@@ -384,7 +384,7 @@ fn invalid_tooltip_text_does_not_replace_svg() {
     .unwrap();
     fs::write(&output, "existing output").unwrap();
     let error = line_plot(&LinePlotOptions {
-        input: fixture("curve.json"),
+        inputs: vec![fixture("curve.json")],
         output: output.clone(),
         events: Some(input),
         ..Default::default()

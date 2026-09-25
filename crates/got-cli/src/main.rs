@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
-use got_core::{analyze, AnalyzeOptions, DEFAULT_INTERVAL_SECS};
+use got_core::{analyze_many, AnalyzeOptions, DEFAULT_INTERVAL_SECS};
 
 /// Analyze a git repository's history and emit JSON time-series files.
 #[derive(Debug, Parser)]
@@ -55,8 +55,20 @@ struct Cli {
     #[arg(long, default_value_t = default_procs())]
     procs: usize,
 
-    /// Path to the git repository to analyze.
-    repo_dir: PathBuf,
+    /// When multiple repositories are given, combine them into a single
+    /// set of output files instead of one subdirectory per repository.
+    /// Series for labels shared across repositories (e.g. the same
+    /// author or file extension) are summed after being aligned onto a
+    /// shared timeline. Ignored with a single repository.
+    #[arg(long, default_value_t = false)]
+    merge: bool,
+
+    /// Path(s) to the git repository/repositories to analyze. When more
+    /// than one is given, each is analyzed independently and its JSON
+    /// output is written to a subdirectory of `--outdir` named after the
+    /// repository's directory name (unless `--merge` is set).
+    #[arg(required = true, num_args = 1..)]
+    repo_dir: Vec<PathBuf>,
 }
 
 fn default_procs() -> usize {
@@ -68,7 +80,7 @@ fn default_procs() -> usize {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let options = AnalyzeOptions {
-        repo_dir: cli.repo_dir,
+        repo_dir: PathBuf::new(), // overridden per-repository by analyze_many
         branch: cli.branch,
         cohort_format: cli.cohortfm,
         interval_secs: cli.interval,
@@ -79,7 +91,8 @@ fn main() -> Result<()> {
         procs: cli.procs,
         quiet: cli.quiet,
         outdir: cli.outdir,
+        merge: cli.merge,
     };
-    analyze(&options)?;
+    analyze_many(&cli.repo_dir, &options)?;
     Ok(())
 }

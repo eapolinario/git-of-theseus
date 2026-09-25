@@ -39,14 +39,16 @@ struct Cli {
     #[arg(long)]
     events: Option<PathBuf>,
 
-    /// Input JSON file (e.g. cohorts.json, exts.json).
-    input_fn: PathBuf,
+    /// Input JSON file(s) (e.g. cohorts.json, exts.json). Pass more than
+    /// one to overlay/align series from multiple repositories.
+    #[arg(required = true, num_args = 1..)]
+    input_fn: Vec<PathBuf>,
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let opts = LinePlotOptions {
-        input: cli.input_fn,
+        inputs: cli.input_fn,
         output: cli.outfile,
         max_n: cli.max_n,
         normalize: cli.normalize,
