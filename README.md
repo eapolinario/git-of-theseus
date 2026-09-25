@@ -44,6 +44,28 @@ This writes several JSON files to `<output-dir>`:
 
 Analysis can take a while on large repos. Run `git-of-theseus-analyze --help` for all options including `--interval`, `--branch`, `--ignore`, and `--only`.
 
+### Analyzing multiple repositories
+
+Pass two or more repository paths to analyze them in one run:
+
+```shell
+git-of-theseus-analyze repo-one repo-two --outdir got
+```
+
+Each repository writes the normal JSON files to a named subdirectory:
+`got/repo-one/cohorts.json`, `got/repo-two/cohorts.json`, and so on. If two
+repositories have the same directory name, a numeric suffix is added.
+
+Line, stack, and survival plots accept multiple input files. Line and stack
+plots align repository timelines, carry values forward between samples, and
+prefix labels with the repository directory name:
+
+```shell
+git-of-theseus-line-plot got/repo-one/authors.json got/repo-two/authors.json
+git-of-theseus-stack-plot got/repo-one/cohorts.json got/repo-two/cohorts.json
+git-of-theseus-survival-plot got/repo-one/survival.json got/repo-two/survival.json
+```
+
 #### Faster analysis with the Rust port (experimental)
 
 A Rust reimplementation is being developed in this repository under `crates/got-core`, `crates/got-cli`, and `crates/got-plot`. It uses [libgit2](https://libgit2.org/) directly and runs significantly faster than the Python version on large histories. The full pipeline — analyze + line/stack/survival plots — is available in Rust:
@@ -55,7 +77,7 @@ A Rust reimplementation is being developed in this repository under `crates/got-
 | `git-of-theseus-stack-plot` | `git-of-theseus-stack-plot-rs` |
 | `git-of-theseus-survival-plot` | `git-of-theseus-survival-plot-rs` |
 
-The Rust analyzer writes the same JSON schema as Python, so you can mix and match — e.g. analyze with Rust and plot with Python, or vice versa.
+The Rust analyzer writes the same JSON schema as Python, so you can mix and match — e.g. analyze with Rust and plot with Python, or vice versa. The Rust CLIs support the same multi-repository input as their Python counterparts: pass several repository paths to `git-of-theseus-analyze-rs`, and several JSON files to the Rust line/stack/survival plot binaries.
 
 Build and run end-to-end:
 
@@ -66,6 +88,15 @@ OUT=got-rs
 ./target/release/git-of-theseus-stack-plot-rs $OUT/cohorts.json --outfile cohorts.png
 ./target/release/git-of-theseus-line-plot-rs   $OUT/authors.json --normalize --outfile authors.png
 ./target/release/git-of-theseus-survival-plot-rs $OUT/survival.json --exp-fit --outfile survival.png
+```
+
+Analyzing multiple repositories and overlaying their plots works the same way as the Python CLIs:
+
+```shell
+./target/release/git-of-theseus-analyze-rs repo-one repo-two --outdir got-rs
+./target/release/git-of-theseus-line-plot-rs got-rs/repo-one/authors.json got-rs/repo-two/authors.json --outfile authors.svg
+./target/release/git-of-theseus-stack-plot-rs got-rs/repo-one/cohorts.json got-rs/repo-two/cohorts.json --outfile cohorts.svg
+./target/release/git-of-theseus-survival-plot-rs got-rs/repo-one/survival.json got-rs/repo-two/survival.json --outfile survival.svg
 ```
 
 All Rust plot binaries support both PNG and SVG output (chosen by file extension)
@@ -86,6 +117,7 @@ The Rust port is being delivered incrementally. Tracked work:
 - [x] Parallel blame via rayon with per-thread `git2::Repository`
 - [x] Fast diff that skips blame on unchanged blobs
 - [x] JSON output matching `cohorts.json` / `exts.json` / `authors.json` / `dirs.json` / `domains.json` / `survival.json`, consumable by the existing Python plot scripts
+- [x] Multi-repository analysis (`git-of-theseus-analyze-rs repo-a repo-b ...`) and multi-input line/stack/survival plots, matching the Python CLI
 - [x] Unit + end-to-end integration tests; `fmt --check`, `clippy -D warnings`, build/test in CI; CI cross-checks Rust JSON via the Python plot scripts
 
 **Part 1.x — fill in deferred Python features**
@@ -262,7 +294,10 @@ With an exponential decay fit:
 
 ## Analyzing Multiple Repositories
 
-To compare survival curves across projects, analyze each repository separately and pass all `survival.json` files to the survival plot command:
+See [Analyzing multiple repositories](#analyzing-multiple-repositories) in
+Step 1 above for how to analyze several repositories in one run (or
+separately) and feed the results into any plot command — line, stack, or
+survival:
 
 ```shell
 git-of-theseus-analyze /path/to/repo-a --outdir repo-a-data
