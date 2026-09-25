@@ -460,7 +460,11 @@ fn analyze_in_memory_with_pool(
 
         // Fast-diff: collect entries to actually blame, subtracting
         // contributions from modified or deleted files.
-        let fastdiff_start = if options.measure_time { Some(Instant::now()) } else { None };
+        let fastdiff_start = if options.measure_time {
+            Some(Instant::now())
+        } else {
+            None
+        };
         let mut cur_file_hash: HashMap<String, Oid> = HashMap::new();
         let mut to_blame: Vec<TreeEntry> = Vec::new();
         for entry in &entries {
@@ -503,7 +507,10 @@ fn analyze_in_memory_with_pool(
 
         if let Some(start) = fastdiff_start {
             let elapsed_us = start.elapsed().as_micros() as u64;
-            options.timing.fastdiff_time_us.fetch_add(elapsed_us, Ordering::Relaxed);
+            options
+                .timing
+                .fastdiff_time_us
+                .fetch_add(elapsed_us, Ordering::Relaxed);
         }
 
         // Blame the changed files (in parallel).
@@ -518,9 +525,13 @@ fn analyze_in_memory_with_pool(
             &options.timing,
             options.measure_time,
         )?;
-        
+
         // Measure post-blame histogram aggregation
-        let agg_start = if options.measure_time { Some(Instant::now()) } else { None };
+        let agg_start = if options.measure_time {
+            Some(Instant::now())
+        } else {
+            None
+        };
         for (path, hist) in blame_results {
             for (key, count) in &hist {
                 *cur_y.entry(key.clone()).or_insert(0) += *count;
@@ -529,7 +540,10 @@ fn analyze_in_memory_with_pool(
         }
         if let Some(start) = agg_start {
             let elapsed_us = start.elapsed().as_micros() as u64;
-            options.timing.post_blame_time_us.fetch_add(elapsed_us, Ordering::Relaxed);
+            options
+                .timing
+                .post_blame_time_us
+                .fetch_add(elapsed_us, Ordering::Relaxed);
         }
 
         // Snapshot per-curve values for this sampled commit.
@@ -727,6 +741,7 @@ fn discover_entries(
 /// Blames each entry at `commit_oid` and returns `(path, histogram)` pairs.
 /// Each worker thread opens its own `git2::Repository` because `Repository`
 /// is not `Sync`.
+#[allow(clippy::too_many_arguments)]
 fn blame_files(
     pool: &rayon::ThreadPool,
     repo_dir: &Path,
@@ -753,7 +768,8 @@ fn blame_files(
                     if ignore_whitespace {
                         opts.ignore_whitespace(true);
                     }
-                    let hist = blame_one(repo, entry, &mut opts, commit2cohort, timing, measure_time)?;
+                    let hist =
+                        blame_one(repo, entry, &mut opts, commit2cohort, timing, measure_time)?;
                     progress.inc(1);
                     Ok((entry.path.clone(), hist))
                 },
@@ -776,15 +792,25 @@ fn blame_one(
     measure_time: bool,
 ) -> Result<FileHistogram> {
     // Measure time spent on blame (I/O)
-    let blame_start = if measure_time { Some(Instant::now()) } else { None };
+    let blame_start = if measure_time {
+        Some(Instant::now())
+    } else {
+        None
+    };
     let blame = repo.blame_file(Path::new(&entry.path), Some(opts))?;
     if let Some(start) = blame_start {
         let elapsed_us = start.elapsed().as_micros() as u64;
-        timing.blame_time_us.fetch_add(elapsed_us, Ordering::Relaxed);
+        timing
+            .blame_time_us
+            .fetch_add(elapsed_us, Ordering::Relaxed);
     }
 
     // Measure time spent on post-blame computation
-    let post_blame_start = if measure_time { Some(Instant::now()) } else { None };
+    let post_blame_start = if measure_time {
+        Some(Instant::now())
+    } else {
+        None
+    };
     let mut h: FileHistogram = HashMap::new();
     for hunk in blame.iter() {
         let lines = hunk.lines_in_hunk() as u64;
@@ -821,7 +847,9 @@ fn blame_one(
     }
     if let Some(start) = post_blame_start {
         let elapsed_us = start.elapsed().as_micros() as u64;
-        timing.post_blame_time_us.fetch_add(elapsed_us, Ordering::Relaxed);
+        timing
+            .post_blame_time_us
+            .fetch_add(elapsed_us, Ordering::Relaxed);
     }
     timing.files_blamed.fetch_add(1, Ordering::Relaxed);
     Ok(h)
@@ -836,9 +864,9 @@ fn make_bar(quiet: bool, msg: &str, total: Option<u64>) -> ProgressBar {
         None => ProgressBar::new_spinner(),
     };
     let style = match total {
-        Some(_) => {
-            ProgressStyle::with_template("{msg:<55} [{bar:30}] {pos}/{len} ({elapsed_precise} / ETA {eta_precise})")
-        }
+        Some(_) => ProgressStyle::with_template(
+            "{msg:<55} [{bar:30}] {pos}/{len} ({elapsed_precise} / ETA {eta_precise})",
+        ),
         None => ProgressStyle::with_template("{msg:<55} {pos} ({elapsed_precise})"),
     };
     if let Ok(s) = style {
