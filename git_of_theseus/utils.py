@@ -14,7 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import itertools, numpy
+import itertools, json
+from pathlib import Path
+
+import dateutil.parser
+import numpy
 
 
 def generate_n_colors(n):
@@ -31,3 +35,40 @@ def generate_n_colors(n):
         )
         colors.append(new_color)
     return colors
+
+
+def load_curve_inputs(input_fns):
+    paths = [Path(input_fns)] if isinstance(input_fns, (str, Path)) else [Path(p) for p in input_fns]
+    if not paths:
+        raise ValueError("at least one input file is required")
+
+    datasets = []
+    all_ts = set()
+    for path in paths:
+        with path.open() as f:
+            data = json.load(f)
+        ts = [dateutil.parser.parse(value) for value in data["ts"]]
+        if len(data["y"]) != len(data["labels"]):
+            raise ValueError(f"{path} has mismatched series and label counts")
+        if any(len(row) != len(ts) for row in data["y"]):
+            raise ValueError(f"{path} has a series with a mismatched timestamp count")
+        datasets.append((path, ts, data["y"], data["labels"]))
+        all_ts.update(ts)
+
+    timestamps = sorted(all_ts)
+    labels = []
+    rows = []
+    prefix_labels = len(paths) > 1
+    for path, ts, values, source_labels in datasets:
+        source = path.parent.name or path.stem
+        positions = {timestamp: index for index, timestamp in enumerate(ts)}
+        for label, values_for_label in zip(source_labels, values):
+            row = []
+            current = 0
+            for timestamp in timestamps:
+                if timestamp in positions:
+                    current = values_for_label[positions[timestamp]]
+                row.append(current)
+            labels.append(f"{source}: {label}" if prefix_labels else label)
+            rows.append(row)
+    return {"y": numpy.array(rows), "ts": timestamps, "labels": labels}

@@ -18,12 +18,12 @@ import matplotlib
 
 matplotlib.use("Agg")
 
-import argparse, dateutil.parser, json, numpy, sys
+import argparse, numpy, sys
 from matplotlib import pyplot
 
 
 from .events import add_event_annotations, load_events, save_event_plot
-from .utils import generate_n_colors
+from .utils import generate_n_colors, load_curve_inputs
 
 
 def line_plot(
@@ -35,8 +35,8 @@ def line_plot(
     events=None,
 ):
     annotations = load_events(events) if events is not None else []
-    data = json.load(open(input_fn))  # TODO do we support multiple arguments here?
-    y = numpy.array(data["y"])
+    data = load_curve_inputs(input_fn)
+    y = data["y"]
     y_sums = numpy.sum(y, axis=0)
     if y.shape[0] > max_n:
         js = sorted(range(len(data["labels"])), key=lambda j: max(y[j]), reverse=True)
@@ -49,7 +49,7 @@ def line_plot(
         y = 100.0 * y / y_sums
     pyplot.figure(figsize=(16, 12), dpi=120)
     pyplot.style.use("ggplot")
-    ts = [dateutil.parser.parse(t) for t in data["ts"]]
+    ts = data["ts"]
     colors = generate_n_colors(len(labels))
     for color, label, series in zip(colors, labels, y):
         pyplot.plot(ts, series, color=color, label=label, linewidth=3)
@@ -92,7 +92,7 @@ def line_plot_cmdline():
         type=str,
         help="YAML manifest of external calendar-time events",
     )
-    parser.add_argument("input_fn")
+    parser.add_argument("input_fn", nargs="+")
     kwargs = vars(parser.parse_args())
 
     try:
