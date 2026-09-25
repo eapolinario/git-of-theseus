@@ -55,10 +55,18 @@ struct Cli {
     #[arg(long, default_value_t = default_procs())]
     procs: usize,
 
+    /// When multiple repositories are given, combine them into a single
+    /// set of output files instead of one subdirectory per repository.
+    /// Series for labels shared across repositories (e.g. the same
+    /// author or file extension) are summed after being aligned onto a
+    /// shared timeline. Ignored with a single repository.
+    #[arg(long, default_value_t = false)]
+    merge: bool,
+
     /// Path(s) to the git repository/repositories to analyze. When more
     /// than one is given, each is analyzed independently and its JSON
     /// output is written to a subdirectory of `--outdir` named after the
-    /// repository's directory name.
+    /// repository's directory name (unless `--merge` is set).
     #[arg(required = true, num_args = 1..)]
     repo_dir: Vec<PathBuf>,
 }
@@ -83,6 +91,7 @@ fn main() -> Result<()> {
         procs: cli.procs,
         quiet: cli.quiet,
         outdir: cli.outdir,
+        merge: cli.merge,
     };
     analyze_many(&cli.repo_dir, &options)?;
     Ok(())

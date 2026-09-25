@@ -205,3 +205,76 @@ fn analyze_many_with_a_single_repo_matches_analyze() {
     // Single-repo output goes directly to `outdir`, not a named subdirectory.
     assert!(outdir.join("cohorts.json").exists());
 }
+
+#[test]
+fn analyze_many_merge_sums_overlapping_labels_across_repositories() {
+    let dir = tempdir().unwrap();
+
+    // repo-a: one commit in 2020, one line, author Alice.
+    let repo_a = dir.path().join("repo-a");
+    fs::create_dir_all(&repo_a).unwrap();
+    run(&repo_a, &["init", "-q", "-b", "main"]);
+    run(&repo_a, &["config", "commit.gpgsign", "false"]);
+    fs::write(repo_a.join("a.py"), "print('one')\n").unwrap();
+    run(&repo_a, &["add", "a.py"]);
+    run_with_date(
+        &repo_a,
+        "2020-01-15T00:00:00Z",
+        &["commit", "-q", "-m", "first-a"],
+    );
+
+    // repo-b: one commit in 2021, two lines, same author/extension/domain.
+    let repo_b = dir.path().join("repo-b");
+    fs::create_dir_all(&repo_b).unwrap();
+    run(&repo_b, &["init", "-q", "-b", "main"]);
+    run(&repo_b, &["config", "commit.gpgsign", "false"]);
+    fs::write(repo_b.join("a.py"), "print('two')\nprint('three')\n").unwrap();
+    run(&repo_b, &["add", "a.py"]);
+    run_with_date(
+        &repo_b,
+        "2021-06-15T00:00:00Z",
+        &["commit", "-q", "-m", "first-b"],
+    );
+
+    let outdir = dir.path().join("out");
+    let template = AnalyzeOptions {
+        branch: "main".into(),
+        outdir: outdir.clone(),
+        quiet: true,
+        procs: 1,
+        merge: true,
+        ..Default::default()
+    };
+    let results = analyze_many(&[repo_a, repo_b], &template).unwrap();
+    assert_eq!(results.len(), 1);
+    let merged = &results[0];
+
+    // Union of both repos' single sampled commit each: two timepoints.
+    assert_eq!(merged.timestamps.len(), 2);
+
+    // Both repos share the same extension/author/domain: values are
+    // summed, forward-filling repo-a's count before repo-b's first commit.
+    assert_eq!(merged.exts.get(".py"), Some(&vec![1, 3]));
+    assert_eq!(merged.authors.get("Alice"), Some(&vec![1, 3]));
+    assert_eq!(merged.domains.get("example.com"), Some(&vec![1, 3]));
+
+    // Cohorts differ by year: each curve only grows once its own
+    // repository's commit has landed.
+    assert_eq!(merged.cohorts.get("2020"), Some(&vec![1, 1]));
+    assert_eq!(merged.cohorts.get("2021"), Some(&vec![0, 2]));
+
+    // Output lands directly in `outdir` -- no per-repo subdirectories.
+    for file in [
+        "cohorts.json",
+        "exts.json",
+        "authors.json",
+        "dirs.json",
+        "domains.json",
+        "survival.json",
+    ] {
+        let bytes = fs::read(outdir.join(file)).unwrap_or_else(|e| panic!("reading {file}: {e}"));
+        let _: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    }
+    assert!(!outdir.join("repo-a").exists());
+    assert!(!outdir.join("repo-b").exists());
+}

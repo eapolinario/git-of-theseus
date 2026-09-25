@@ -99,12 +99,25 @@ Analyzing multiple repositories and overlaying their plots works the same way as
 ./target/release/git-of-theseus-survival-plot-rs got-rs/repo-one/survival.json got-rs/repo-two/survival.json --outfile survival.svg
 ```
 
+`git-of-theseus-analyze-rs` additionally supports `--merge` (Rust-only, no
+Python equivalent): instead of one output subdirectory per repository, it
+combines every repository into a single set of output files written
+directly to `--outdir`. Series for a label shared across repositories
+(the same author, extension, cohort, directory, or domain) are aligned
+onto a shared timeline and summed, so the result reads as if all the
+repositories were one project:
+
+```shell
+./target/release/git-of-theseus-analyze-rs repo-one repo-two --outdir got-rs-merged --merge
+./target/release/git-of-theseus-stack-plot-rs got-rs-merged/cohorts.json --outfile cohorts-merged.png
+```
+
 All Rust plot binaries support both PNG and SVG output (chosen by file extension)
 and accept the existing plot flags (`--outfile`, `--max-n`, `--normalize`,
 `--exp-fit`, `--years`). `--display` is currently a no-op. Python and Rust
 line and stack plot commands support the same optional `--events` manifest.
 
-Flags on `git-of-theseus-analyze-rs` mirror `git-of-theseus-analyze`. Some Python-only features (mailmap rewriting via `git check-mailmap`, the `--opt` commit-graph flag, and interactive SIGINT pause/resume) are not yet implemented in the Rust port; the Python CLI remains the reference implementation while the migration is in progress.
+Flags on `git-of-theseus-analyze-rs` mirror `git-of-theseus-analyze`. Some Python-only features (mailmap rewriting via `git check-mailmap`, the `--opt` commit-graph flag, and interactive SIGINT pause/resume) are not yet implemented in the Rust port; the Python CLI remains the reference implementation while the migration is in progress. `--merge` is the reverse case: a Rust-only addition with no Python equivalent yet.
 
 ##### Rust port — TODO
 
@@ -118,6 +131,7 @@ The Rust port is being delivered incrementally. Tracked work:
 - [x] Fast diff that skips blame on unchanged blobs
 - [x] JSON output matching `cohorts.json` / `exts.json` / `authors.json` / `dirs.json` / `domains.json` / `survival.json`, consumable by the existing Python plot scripts
 - [x] Multi-repository analysis (`git-of-theseus-analyze-rs repo-a repo-b ...`) and multi-input line/stack/survival plots, matching the Python CLI
+- [x] `--merge`: combine multiple repositories into a single, summed set of output files (Rust-only; no Python equivalent yet)
 - [x] Unit + end-to-end integration tests; `fmt --check`, `clippy -D warnings`, build/test in CI; CI cross-checks Rust JSON via the Python plot scripts
 
 **Part 1.x — fill in deferred Python features**
