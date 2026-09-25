@@ -334,6 +334,11 @@ fn analyze_in_memory_with_pool(
     // Step 1: walk every reachable commit on the branch, build cohort map
     // and the up-front `curve_key_tuples` for cohort / author / domain.
     let progress = make_bar(options.quiet, "Listing all commits", None);
+    let commit_walk_start = if options.measure_time {
+        Some(Instant::now())
+    } else {
+        None
+    };
     let mut commit2cohort: HashMap<Oid, String> = HashMap::new();
     let mut cohort_set: HashSet<String> = HashSet::new();
     let mut author_set: HashSet<String> = HashSet::new();
@@ -360,10 +365,22 @@ fn analyze_in_memory_with_pool(
         progress.inc(1);
     }
     progress.finish_and_clear();
+    if let Some(start) = commit_walk_start {
+        let elapsed_us = start.elapsed().as_micros() as u64;
+        options
+            .timing
+            .commit_walk_time_us
+            .fetch_add(elapsed_us, Ordering::Relaxed);
+    }
 
     // Step 2: backtrack along first-parent of HEAD (the Python code uses
     // `repo.head.commit.parents[0]`), sampling at `interval_secs`.
     let progress = make_bar(options.quiet, "Backtracking the master branch", None);
+    let backtrack_start = if options.measure_time {
+        Some(Instant::now())
+    } else {
+        None
+    };
     let mut sampled: Vec<(Oid, i64)> = Vec::new();
     let mut current = repo.find_commit(branch_oid)?;
     let mut last_date: Option<i64> = None;
@@ -380,6 +397,13 @@ fn analyze_in_memory_with_pool(
         current = current.parent(0)?;
     }
     progress.finish_and_clear();
+    if let Some(start) = backtrack_start {
+        let elapsed_us = start.elapsed().as_micros() as u64;
+        options
+            .timing
+            .commit_walk_time_us
+            .fetch_add(elapsed_us, Ordering::Relaxed);
+    }
     sampled.reverse(); // chronological ascending
 
     // Step 3: for each sampled commit, walk the tree and collect blob
@@ -394,8 +418,20 @@ fn analyze_in_memory_with_pool(
         "Discovering entries",
         Some(sampled.len() as u64),
     );
+    let discovery_start = if options.measure_time {
+        Some(Instant::now())
+    } else {
+        None
+    };
     let mut entries_per_commit =
         discover_entries(pool, &options.repo_dir, &sampled, &filter, &progress)?;
+    if let Some(start) = discovery_start {
+        let elapsed_us = start.elapsed().as_micros() as u64;
+        options
+            .timing
+            .tree_discovery_time_us
+            .fetch_add(elapsed_us, Ordering::Relaxed);
+    }
     for entries in &entries_per_commit {
         for entry in entries {
             ext_set.insert(extension(&entry.path));
@@ -851,7 +887,9 @@ fn blame_one(
             .post_blame_time_us
             .fetch_add(elapsed_us, Ordering::Relaxed);
     }
-    timing.files_blamed.fetch_add(1, Ordering::Relaxed);
+    if measure_time {
+        timing.files_blamed.fetch_add(1, Ordering::Relaxed);
+    }
     Ok(h)
 }
 

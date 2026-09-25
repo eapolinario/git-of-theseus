@@ -133,32 +133,40 @@ fn print_timing_stats(timing: &got_core::analyze::TimingStats) {
     let tree_discovery_ms = tree_discovery_us as f64 / 1000.0;
     let commit_walk_ms = commit_walk_us as f64 / 1000.0;
     let total_ms = blame_ms + post_blame_ms + fastdiff_ms + tree_discovery_ms + commit_walk_ms;
+    // Avoid NaN percentages when nothing was measured (e.g. an empty repository).
+    let pct = |part: f64| {
+        if total_ms > 0.0 {
+            (part / total_ms) * 100.0
+        } else {
+            0.0
+        }
+    };
 
     eprintln!("\n=== Timing Statistics ===");
     eprintln!(
         "Blame (I/O):              {:8.1}ms ({:5.1}%)",
         blame_ms,
-        (blame_ms / total_ms) * 100.0
+        pct(blame_ms)
     );
     eprintln!(
         "Post-blame (compute):    {:8.1}ms ({:5.1}%)",
         post_blame_ms,
-        (post_blame_ms / total_ms) * 100.0
+        pct(post_blame_ms)
     );
     eprintln!(
         "Fast-diff:               {:8.1}ms ({:5.1}%)",
         fastdiff_ms,
-        (fastdiff_ms / total_ms) * 100.0
+        pct(fastdiff_ms)
     );
     eprintln!(
         "Tree discovery (I/O):    {:8.1}ms ({:5.1}%)",
         tree_discovery_ms,
-        (tree_discovery_ms / total_ms) * 100.0
+        pct(tree_discovery_ms)
     );
     eprintln!(
         "Commit walk (I/O):       {:8.1}ms ({:5.1}%)",
         commit_walk_ms,
-        (commit_walk_ms / total_ms) * 100.0
+        pct(commit_walk_ms)
     );
     eprintln!("---");
     eprintln!("Total:                   {:8.1}ms", total_ms);
@@ -166,11 +174,11 @@ fn print_timing_stats(timing: &got_core::analyze::TimingStats) {
     eprintln!(
         "\nI/O operations: {:.1}ms ({:.1}%)",
         blame_ms + tree_discovery_ms + commit_walk_ms,
-        ((blame_ms + tree_discovery_ms + commit_walk_ms) / total_ms) * 100.0
+        pct(blame_ms + tree_discovery_ms + commit_walk_ms)
     );
     eprintln!(
         "Computation:    {:.1}ms ({:.1}%)",
         post_blame_ms + fastdiff_ms,
-        ((post_blame_ms + fastdiff_ms) / total_ms) * 100.0
+        pct(post_blame_ms + fastdiff_ms)
     );
 }
