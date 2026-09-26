@@ -54,6 +54,16 @@ jobs:
           PR_BASE_REF: ${{ github.base_ref }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
+          resolve_origin_branch() {
+            branch="$1"
+            if git rev-parse --verify --quiet "origin/$branch^{commit}" >/dev/null; then
+              git rev-parse "origin/$branch^{commit}"
+            else
+              echo "::error::Could not resolve origin/$branch" >&2
+              exit 1
+            fi
+          }
+
           if [ -n "$INPUT_BASELINE_REF" ]; then
             if [[ "$INPUT_BASELINE_REF" == origin/* || "$INPUT_BASELINE_REF" == refs/* ]] \
               && git rev-parse --verify --quiet "$INPUT_BASELINE_REF^{commit}" >/dev/null; then
@@ -70,9 +80,9 @@ jobs:
               exit 1
             fi
           elif [ -n "$PR_BASE_REF" ]; then
-            baseline_rev="origin/$PR_BASE_REF"
+            baseline_rev="$(resolve_origin_branch "$PR_BASE_REF")"
           else
-            baseline_rev="origin/$DEFAULT_BRANCH"
+            baseline_rev="$(resolve_origin_branch "$DEFAULT_BRANCH")"
           fi
 
           cargo semver-checks --package "$PACKAGE" --baseline-rev "$baseline_rev"
