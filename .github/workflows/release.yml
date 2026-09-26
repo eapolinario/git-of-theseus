@@ -89,6 +89,7 @@ jobs:
           $manifestDir = "winget-manifests/e/Eapolinario/GitOfTheseus/$version"
           New-Item -ItemType Directory -Force $manifestDir
           @"
+          # yaml-language-server: `$schema=https://aka.ms/winget-manifest.version.1.10.0.schema.json
           PackageIdentifier: Eapolinario.GitOfTheseus
           PackageVersion: $version
           DefaultLocale: en-US
@@ -96,6 +97,7 @@ jobs:
           ManifestVersion: 1.10.0
           "@ | Set-Content "$manifestDir/Eapolinario.GitOfTheseus.yaml"
           @"
+          # yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.1.10.0.schema.json
           PackageIdentifier: Eapolinario.GitOfTheseus
           PackageVersion: $version
           Installers:
@@ -117,6 +119,7 @@ jobs:
           ManifestVersion: 1.10.0
           "@ | Set-Content "$manifestDir/Eapolinario.GitOfTheseus.installer.yaml"
           @"
+          # yaml-language-server: `$schema=https://aka.ms/winget-manifest.defaultLocale.1.10.0.schema.json
           PackageIdentifier: Eapolinario.GitOfTheseus
           PackageVersion: $version
           PackageLocale: en-US
