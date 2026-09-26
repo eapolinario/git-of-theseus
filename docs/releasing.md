@@ -31,9 +31,12 @@ workflow runs `release-plz release-pr` only; it does not run
 `release-plz release`, create tags, create GitHub Releases, or publish crates.
 
 The repository configures release-plz in git-only mode because these crates do
-not need to be published to crates.io for version calculation. It also groups
-`got-core`, `got-cli`, and `got-plot` so the proposed PR preserves the shared
-workspace version.
+not need to be published to crates.io for version calculation. It looks for
+existing release tags named `v{{ version }}`; the tag-driven release workflow
+must create those tags after the version-bump PR is merged. This release-plz
+workflow intentionally does not create tags. It also groups `got-core`,
+`got-cli`, and `got-plot` so the proposed PR preserves the shared workspace
+version.
 
 Reviewers should check that the proposed version matches the policy above and
 that both of these files are updated in the same PR:
@@ -66,10 +69,11 @@ On pull requests it compares against the PR base branch with
 `--baseline-rev origin/<base-branch>`, so the check works before the crates are
 published to any registry. The workflow can also be run manually with a custom
 Git revision baseline. Manual `baseline_ref` values may be commits, tags, full
-refs such as `origin/main`, or branch names; branch-like values are first tried
-as `origin/<baseline_ref>` so they resolve to the remote-tracking branch instead
-of the workflow's checked-out branch. If that does not resolve, the raw value is
-tried as a commit, tag, or full ref. If a manual run does not set
+refs such as `origin/main`, or branch names. Full refs and SHA-like values are
+resolved directly, tags are resolved from `refs/tags/<baseline_ref>`, and branch
+names are resolved as `origin/<baseline_ref>` so they use the remote-tracking
+branch instead of the workflow's checked-out branch. If those do not resolve,
+the raw value is tried as a final fallback. If a manual run does not set
 `baseline_ref`, it falls back to `origin/<default-branch>`.
 
 Once the library crates are published and registry baselines are preferred, run
