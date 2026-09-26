@@ -81,51 +81,78 @@ fn all_plot_help_lists_events() {
     }
 }
 
+fn run_git(repo: &std::path::Path, args: &[&str]) {
+    let status = Command::new("git")
+        .args(args)
+        .current_dir(repo)
+        .env("GIT_AUTHOR_NAME", "Alice")
+        .env("GIT_AUTHOR_EMAIL", "alice@example.com")
+        .env("GIT_COMMITTER_NAME", "Alice")
+        .env("GIT_COMMITTER_EMAIL", "alice@example.com")
+        .status()
+        .unwrap();
+    assert!(status.success(), "git {args:?} failed");
+}
+
+fn make_repository() -> tempfile::TempDir {
+    let dir = tempdir().unwrap();
+    let repo = dir.path();
+    run_git(repo, &["init", "-q", "-b", "main"]);
+    run_git(repo, &["config", "commit.gpgsign", "false"]);
+    fs::write(repo.join("a.rs"), "fn main() {}\n").unwrap();
+    run_git(repo, &["add", "a.rs"]);
+    run_git(repo, &["commit", "-q", "-m", "initial"]);
+    dir
+}
+
+#[test]
+fn missing_branch_warns_with_attached_or_detached_head_fallback() {
+    let dir = make_repository();
+    let repo = dir.path();
+    let run_analyze = || {
+        Command::new(ANALYZE)
+            .args(["--branch", "missing", "--quiet", "--procs", "1", "--outdir"])
+            .arg(repo.join("out"))
+            .arg(repo)
+            .output()
+            .unwrap()
+    };
+
+    let attached = run_analyze();
+    assert!(attached.status.success(), "{attached:?}");
+    assert!(String::from_utf8_lossy(&attached.stderr).contains(
+        "Requested branch: 'missing' does not exist. Falling back to default branch 'main'"
+    ));
+
+    let head = String::from_utf8(
+        Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo)
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    run_git(repo, &["checkout", "-q", "--detach"]);
+
+    let detached = run_analyze();
+    assert!(detached.status.success(), "{detached:?}");
+    assert!(String::from_utf8_lossy(&detached.stderr).contains(&format!(
+        "Requested branch: 'missing' does not exist. Falling back to HEAD commit '{}'",
+        head.trim()
+    )));
+}
+
 #[test]
 fn opt_writes_a_commit_graph() {
-    let dir = tempdir().unwrap();
-    let repo = dir.path().join("repo");
-    fs::create_dir(&repo).unwrap();
-
-    let result = Command::new("git")
-        .args(["init", "-q"])
-        .current_dir(&repo)
-        .output()
-        .unwrap();
-    assert!(result.status.success());
-    let result = Command::new("git")
-        .args(["checkout", "-q", "-b", "main"])
-        .current_dir(&repo)
-        .output()
-        .unwrap();
-    assert!(result.status.success());
-    fs::write(repo.join("a.rs"), "fn main() {}\n").unwrap();
-    let result = Command::new("git")
-        .args(["add", "."])
-        .current_dir(&repo)
-        .output()
-        .unwrap();
-    assert!(result.status.success());
-    let result = Command::new("git")
-        .args([
-            "-c",
-            "user.name=Test User",
-            "-c",
-            "user.email=test@example.com",
-            "commit",
-            "-qm",
-            "initial",
-        ])
-        .current_dir(&repo)
-        .output()
-        .unwrap();
-    assert!(result.status.success());
+    let dir = make_repository();
+    let repo = dir.path();
 
     let result = Command::new(ANALYZE)
         .args(["--opt", "--quiet", "--branch", "main"])
         .arg("--outdir")
         .arg(dir.path().join("out"))
-        .arg(&repo)
+        .arg(repo)
         .output()
         .unwrap();
     assert!(

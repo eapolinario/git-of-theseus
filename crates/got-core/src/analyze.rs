@@ -330,7 +330,7 @@ fn analyze_in_memory_with_pool(
     let repo = Repository::open(&options.repo_dir)
         .with_context(|| format!("opening repository {}", options.repo_dir.display()))?;
 
-    let branch_oid = resolve_branch(&repo, &options.branch, options.quiet)?;
+    let branch_oid = resolve_branch(&repo, &options.branch)?;
     let filter = PathFilter::new(&options.only, &options.ignore, options.all_filetypes)?;
 
     // Step 1: walk every reachable commit on the branch, build cohort map
@@ -760,20 +760,36 @@ fn mailmap_identity_or_original(
     )
 }
 
-fn resolve_branch(repo: &Repository, branch: &str, quiet: bool) -> Result<Oid> {
+fn resolve_branch(repo: &Repository, branch: &str) -> Result<Oid> {
     if let Ok(reference) = repo.find_reference(&format!("refs/heads/{branch}")) {
+        let reference = reference
+            .resolve()
+            .with_context(|| format!("resolving branch '{branch}'"))?;
         if let Some(oid) = reference.target() {
             return Ok(oid);
         }
     }
-    // Fallback: HEAD (handles detached HEAD too).
     let head = repo.head().context("resolving HEAD")?;
-    let head_oid = head
-        .target()
-        .ok_or_else(|| anyhow!("HEAD is not a direct reference"))?;
-    if !quiet {
+    let head_oid = match head.target() {
+        Some(oid) => oid,
+        None => head
+            .resolve()
+            .context("resolving HEAD target")?
+            .target()
+            .ok_or_else(|| anyhow!("HEAD target is not a direct reference"))?,
+    };
+    let head_branch = head
+        .symbolic_target()
+        .or_else(|| head.name())
+        .and_then(|name| name.strip_prefix("refs/heads/"))
+        .map(str::to_string);
+    if let Some(default_branch) = head_branch {
         eprintln!(
-            "warning: requested branch '{branch}' does not exist; falling back to HEAD ({head_oid})"
+            "Requested branch: '{branch}' does not exist. Falling back to default branch '{default_branch}'"
+        );
+    } else {
+        eprintln!(
+            "Requested branch: '{branch}' does not exist. Falling back to HEAD commit '{head_oid}'"
         );
     }
     Ok(head_oid)
