@@ -115,8 +115,8 @@ been removed. A handful of features from the former Python CLI are not yet
 implemented in Rust and are documented below as a breaking change rather than
 a gap versus a still-available reference implementation: mailmap rewriting
 via `git check-mailmap` and interactive SIGINT pause/resume. Invocations that
-relied on those flags will now fail;
-see the deferred-features checklist below for tracking. `--merge` is the
+relied on those flags will now fail; see the deferred-features checklist below
+for tracking. `--merge` is the
 reverse case: a Rust-only addition that had no Python equivalent.
 
 ##### Rust port — TODO

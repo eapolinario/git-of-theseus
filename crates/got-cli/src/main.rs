@@ -115,6 +115,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+/// Runs `git commit-graph write --reachable` (Git 2.18+) for every repository.
 fn write_commit_graphs(repo_dirs: &[PathBuf]) -> Result<()> {
     for repo_dir in repo_dirs {
         let output = Command::new("git")
