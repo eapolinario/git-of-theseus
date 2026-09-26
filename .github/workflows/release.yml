@@ -45,6 +45,12 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Verify tag matches workspace version
+        shell: bash
+        run: |
+          test "v$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "got-core") | .version')" = "$GITHUB_REF_NAME"
+
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update -qq && sudo apt-get install -y libfontconfig1-dev libfreetype6-dev libssl-dev

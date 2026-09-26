@@ -91,6 +91,9 @@ Executables will be in `target/release/`. Add that directory to your `$PATH`, or
 ./target/release/git-of-theseus-analyze --help
 ```
 
+Release versioning and tag preparation are documented in
+[`docs/releasing.md`](docs/releasing.md).
+
 ## Usage
 
 ### Step 1 — Analyze a repository

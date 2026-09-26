@@ -1,0 +1,88 @@
+name: SemVer API checks
+
+on:
+  pull_request:
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - crates/**
+      - .github/workflows/semver.yml
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: Git revision to use as the cargo-semver-checks baseline
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  semver:
+    name: cargo-semver-checks (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - got-core
+          - got-plot
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies (fontconfig, freetype)
+        run: sudo apt-get update -qq && sudo apt-get install -y libfontconfig1-dev libfreetype6-dev
+
+      - name: Cache cargo registry / build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-semver-checks
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-semver-checks
+          fallback: none
+
+      - name: Run cargo-semver-checks
+        env:
+          PACKAGE: ${{ matrix.package }}
+          INPUT_BASELINE_REF: ${{ inputs.baseline_ref }}
+          PR_BASE_REF: ${{ github.base_ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          resolve_origin_branch() {
+            branch="$1"
+            if git rev-parse --verify --quiet "origin/$branch^{commit}" >/dev/null; then
+              git rev-parse "origin/$branch^{commit}"
+            else
+              echo "::error::Could not resolve origin/$branch" >&2
+              exit 1
+            fi
+          }
+
+          if [ -n "$INPUT_BASELINE_REF" ]; then
+            if [[ "$INPUT_BASELINE_REF" == origin/* || "$INPUT_BASELINE_REF" == refs/* ]] \
+              && git rev-parse --verify --quiet "$INPUT_BASELINE_REF^{commit}" >/dev/null; then
+              baseline_rev="$(git rev-parse "$INPUT_BASELINE_REF^{commit}")"
+            elif git rev-parse --verify --quiet "refs/tags/$INPUT_BASELINE_REF^{commit}" >/dev/null; then
+              baseline_rev="$(git rev-parse "refs/tags/$INPUT_BASELINE_REF^{commit}")"
+            elif git rev-parse --verify --quiet "origin/$INPUT_BASELINE_REF^{commit}" >/dev/null; then
+              baseline_rev="$(git rev-parse "origin/$INPUT_BASELINE_REF^{commit}")"
+            elif [[ "$INPUT_BASELINE_REF" =~ ^[0-9a-fA-F]{40}$ ]] \
+              && git rev-parse --verify --quiet "$INPUT_BASELINE_REF^{commit}" >/dev/null; then
+              baseline_rev="$(git rev-parse "$INPUT_BASELINE_REF^{commit}")"
+            else
+              echo "::error::Could not resolve baseline_ref '$INPUT_BASELINE_REF' as a full 40-character commit SHA, tag, full ref, or origin branch"
+              exit 1
+            fi
+          elif [ -n "$PR_BASE_REF" ]; then
+            baseline_rev="$(resolve_origin_branch "$PR_BASE_REF")" || exit 1
+          else
+            baseline_rev="$(resolve_origin_branch "$DEFAULT_BRANCH")" || exit 1
+          fi
+
+          cargo semver-checks --package "$PACKAGE" --baseline-rev "$baseline_rev"
