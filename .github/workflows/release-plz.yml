@@ -2,6 +2,13 @@ name: Prepare release version PR
 
 on:
   workflow_dispatch:
+    inputs:
+      correlation_id:
+        description: Correlates orchestrator-triggered workflow runs
+        required: false
+        type: string
+
+run-name: Prepare release version PR ${{ inputs.correlation_id }}
 
 permissions:
   contents: write
