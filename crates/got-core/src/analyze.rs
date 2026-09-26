@@ -9,8 +9,11 @@
 //! `git-of-theseus-stack-plot` / `-line-plot` / `-survival-plot` Python
 //! commands can consume them unchanged.
 //!
+//! Author identities are normalized through the repository's `.mailmap`
+//! (mirroring `get_mailmap_author_name_email` in the Python implementation)
+//! via `git2::Repository::mailmap` / `Mailmap::resolve_signature`.
+//!
 //! Features intentionally deferred to follow-up PRs:
-//! - `mailmap` author rewriting (`get_mailmap_author_name_email` in Python)
 //! - `--opt` git-commit-graph generation
 //! - Interactive SIGINT pause / process-count adjustment
 
@@ -22,7 +25,7 @@ use std::time::Instant;
 
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, TimeZone, Utc};
-use git2::{BlameOptions, Oid, Repository, Sort};
+use git2::{BlameOptions, Mailmap, Oid, Repository, Signature, Sort};
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 
@@ -344,6 +347,8 @@ fn analyze_in_memory_with_pool(
     let mut author_set: HashSet<String> = HashSet::new();
     let mut domain_set: HashSet<String> = HashSet::new();
 
+    let mailmap = repo.mailmap().context("loading repository mailmap")?;
+
     let mut walk = repo.revwalk()?;
     walk.set_sorting(Sort::TOPOLOGICAL | Sort::TIME)?;
     walk.push(branch_oid)?;
@@ -357,9 +362,7 @@ fn analyze_in_memory_with_pool(
         let cohort = format_cohort(committed_at, &options.cohort_format)?;
         commit2cohort.insert(oid, cohort.clone());
         cohort_set.insert(cohort);
-        let author = commit.author();
-        let name = author.name().unwrap_or("").to_string();
-        let email = author.email().unwrap_or("").to_string();
+        let (name, email) = mailmap_author_name_email(&mailmap, &commit.author());
         author_set.insert(name);
         domain_set.insert(extract_domain(&email));
         progress.inc(1);
@@ -718,6 +721,23 @@ fn extract_domain(email: &str) -> String {
     }
 }
 
+/// Resolves `sig` against `mailmap`, mirroring the Python
+/// `get_mailmap_author_name_email` helper: the name and email are rewritten
+/// according to the repository's `.mailmap` (falling back to the original
+/// identity if resolution fails or fields are missing).
+fn mailmap_author_name_email(mailmap: &Mailmap, sig: &Signature<'_>) -> (String, String) {
+    match mailmap.resolve_signature(sig) {
+        Ok(resolved) => (
+            resolved.name().unwrap_or("").to_string(),
+            resolved.email().unwrap_or("").to_string(),
+        ),
+        Err(_) => (
+            sig.name().unwrap_or("").to_string(),
+            sig.email().unwrap_or("").to_string(),
+        ),
+    }
+}
+
 fn resolve_branch(repo: &Repository, branch: &str, quiet: bool) -> Result<Oid> {
     if let Ok(reference) = repo.find_reference(&format!("refs/heads/{branch}")) {
         if let Some(oid) = reference.target() {
@@ -810,9 +830,13 @@ fn blame_commit_window(
         tasks
             .par_iter()
             .map_init(
-                || Repository::open(repo_dir).context("opening repo on worker"),
-                |repo_result, (plan_idx, commit_oid, entry)| {
-                    let repo = repo_result.as_ref().map_err(|e| {
+                || -> Result<(Repository, Mailmap)> {
+                    let repo = Repository::open(repo_dir).context("opening repo on worker")?;
+                    let mailmap = repo.mailmap().context("loading mailmap on worker")?;
+                    Ok((repo, mailmap))
+                },
+                |init_result, (plan_idx, commit_oid, entry)| {
+                    let (repo, mailmap) = init_result.as_ref().map_err(|e| {
                         anyhow!("{e:#}")
                             .context(format!("blaming {} at commit {}", entry.path, commit_oid))
                     })?;
@@ -821,11 +845,16 @@ fn blame_commit_window(
                     if ignore_whitespace {
                         opts.ignore_whitespace(true);
                     }
-                    let histogram =
-                        blame_one(repo, entry, &mut opts, commit2cohort, timing, measure_time)
-                            .with_context(|| {
-                                format!("blaming {} at commit {}", entry.path, commit_oid)
-                            })?;
+                    let histogram = blame_one(
+                        repo,
+                        mailmap,
+                        entry,
+                        &mut opts,
+                        commit2cohort,
+                        timing,
+                        measure_time,
+                    )
+                    .with_context(|| format!("blaming {} at commit {}", entry.path, commit_oid))?;
                     progress.inc(1);
                     Ok((*plan_idx, entry.path.clone(), histogram))
                 },
@@ -844,6 +873,7 @@ fn blame_commit_window(
 
 fn blame_one(
     repo: &Repository,
+    mailmap: &Mailmap,
     entry: &TreeEntry,
     opts: &mut BlameOptions,
     commit2cohort: &HashMap<Oid, String>,
@@ -878,8 +908,7 @@ fn blame_one(
         }
         let orig_oid = hunk.orig_commit_id();
         let signature = hunk.orig_signature();
-        let author_name = signature.name().unwrap_or("").to_string();
-        let author_email = signature.email().unwrap_or("").to_string();
+        let (author_name, author_email) = mailmap_author_name_email(mailmap, &signature);
 
         let cohort = commit2cohort
             .get(&orig_oid)
