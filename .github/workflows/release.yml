@@ -100,3 +100,68 @@ jobs:
           files: dist/*
           fail_on_unmatched_files: true
           generate_release_notes: true
+
+  update-homebrew-formula:
+    name: Update Homebrew formula
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - uses: actions/download-artifact@v4.1.7
+        with:
+          path: dist
+          pattern: "*-apple-darwin"
+          merge-multiple: true
+
+      - name: Update Formula/git-of-theseus.rb
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          arm64_sha=$(sha256sum "dist/git-of-theseus-${TAG}-aarch64-apple-darwin.tar.gz" | cut -d' ' -f1)
+          x86_64_sha=$(sha256sum "dist/git-of-theseus-${TAG}-x86_64-apple-darwin.tar.gz" | cut -d' ' -f1)
+          python3 - "$version" "$arm64_sha" "$x86_64_sha" <<'EOF'
+          from pathlib import Path
+          import sys
+
+          version, arm_sha, x86_sha = sys.argv[1:4]
+          template = Path(".github/homebrew/git-of-theseus.rb.tmpl").read_text()
+          formula = (
+              template.replace("@VERSION@", version)
+              .replace("@ARM64_SHA256@", arm_sha)
+              .replace("@X86_64_SHA256@", x86_sha)
+          )
+          if "@" in formula:
+              raise RuntimeError("unresolved placeholder in Homebrew formula")
+          path = Path("Formula/git-of-theseus.rb")
+          path.parent.mkdir(exist_ok=True)
+          path.write_text(formula)
+          EOF
+
+      - name: Commit and push formula update
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/git-of-theseus.rb
+          if git diff --cached --quiet; then
+            printf '%s\n' "No formula changes to commit"
+          else
+            git commit -m "Update Homebrew formula for ${{ github.ref_name }}"
+            for attempt in 1 2 3; do
+              git pull --rebase origin master
+              if git push origin HEAD:master; then
+                exit 0
+              fi
+              if [[ "$attempt" -eq 3 ]]; then
+                printf '%s\n' "Failed to push formula update after ${attempt} attempts" >&2
+                exit 1
+              fi
+            done
+          fi
