@@ -1,6 +1,6 @@
 ---
 name: release-orchestrator
-description: Orchestrate a full GitHub release for git-of-theseus: open the version-bump PR, gate on CI, merge it, cut the tag, wait for the release workflow, and verify downstream Homebrew and WinGet publication.
+description: "Orchestrate a full GitHub release for git-of-theseus: open the version-bump PR, gate on CI, merge it, cut the tag, wait for the release workflow, and verify downstream Homebrew and WinGet publication."
 ---
 
 # Release orchestrator
