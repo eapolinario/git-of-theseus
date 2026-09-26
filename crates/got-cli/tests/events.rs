@@ -142,3 +142,23 @@ fn missing_branch_warns_with_attached_or_detached_head_fallback() {
         head.trim()
     )));
 }
+
+#[test]
+fn opt_writes_a_commit_graph() {
+    let dir = make_repository();
+    let repo = dir.path();
+
+    let result = Command::new(ANALYZE)
+        .args(["--opt", "--quiet", "--branch", "main"])
+        .arg("--outdir")
+        .arg(dir.path().join("out"))
+        .arg(repo)
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(repo.join(".git/objects/info/commit-graph").exists());
+}
