@@ -1,0 +1,22 @@
+[workspace]
+git_only = true
+git_tag_enable = false
+git_release_enable = false
+changelog_update = false
+dependencies_update = false
+semver_check = false
+pr_branch_prefix = "release-version-"
+pr_name = "chore: prepare release v{{ version }}"
+repo_url = "https://github.com/eapolinario/git-of-theseus"
+
+[[package]]
+name = "got-core"
+version_group = "git-of-theseus"
+
+[[package]]
+name = "got-cli"
+version_group = "git-of-theseus"
+
+[[package]]
+name = "got-plot"
+version_group = "git-of-theseus"

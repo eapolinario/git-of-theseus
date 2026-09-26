@@ -1,0 +1,63 @@
+name: SemVer API checks
+
+on:
+  pull_request:
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - crates/got-core/**
+      - crates/got-plot/**
+      - .github/workflows/semver.yml
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: Git revision to use as the cargo-semver-checks baseline
+        required: true
+        default: origin/master
+
+permissions:
+  contents: read
+
+jobs:
+  semver:
+    name: cargo-semver-checks (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - got-core
+          - got-plot
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies (fontconfig, freetype)
+        run: sudo apt-get update -qq && sudo apt-get install -y libfontconfig1-dev libfreetype6-dev
+
+      - name: Cache cargo registry / build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-semver-checks
+        run: cargo install cargo-semver-checks --locked
+
+      - name: Run cargo-semver-checks
+        env:
+          PACKAGE: ${{ matrix.package }}
+          INPUT_BASELINE_REF: ${{ inputs.baseline_ref }}
+          PR_BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ -n "$INPUT_BASELINE_REF" ]; then
+            baseline_rev="$INPUT_BASELINE_REF"
+          elif [ -n "$PR_BASE_REF" ]; then
+            baseline_rev="origin/$PR_BASE_REF"
+          else
+            baseline_rev="origin/master"
+          fi
+
+          cargo semver-checks --package "$PACKAGE" --baseline-rev "$baseline_rev"
