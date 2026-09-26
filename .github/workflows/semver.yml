@@ -5,15 +5,13 @@ on:
     paths:
       - Cargo.toml
       - Cargo.lock
-      - crates/got-core/**
-      - crates/got-plot/**
+      - crates/**
       - .github/workflows/semver.yml
   workflow_dispatch:
     inputs:
       baseline_ref:
         description: Git revision to use as the cargo-semver-checks baseline
-        required: true
-        default: origin/master
+        required: false
 
 permissions:
   contents: read
@@ -54,13 +52,14 @@ jobs:
           PACKAGE: ${{ matrix.package }}
           INPUT_BASELINE_REF: ${{ inputs.baseline_ref }}
           PR_BASE_REF: ${{ github.base_ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           if [ -n "$INPUT_BASELINE_REF" ]; then
             baseline_rev="$INPUT_BASELINE_REF"
           elif [ -n "$PR_BASE_REF" ]; then
             baseline_rev="origin/$PR_BASE_REF"
           else
-            baseline_rev="origin/master"
+            baseline_rev="origin/$DEFAULT_BRANCH"
           fi
 
           cargo semver-checks --package "$PACKAGE" --baseline-rev "$baseline_rev"
