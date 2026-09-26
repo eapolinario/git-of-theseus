@@ -362,7 +362,7 @@ fn analyze_in_memory_with_pool(
         let cohort = format_cohort(committed_at, &options.cohort_format)?;
         commit2cohort.insert(oid, cohort.clone());
         cohort_set.insert(cohort);
-        let (name, email) = mailmap_author_name_email(&mailmap, &commit.author());
+        let (name, email) = mailmap_author_name_email(&mailmap, &commit.author(), options.quiet);
         author_set.insert(name);
         domain_set.insert(extract_domain(&email));
         progress.inc(1);
@@ -516,6 +516,7 @@ fn analyze_in_memory_with_pool(
             &progress,
             &options.timing,
             options.measure_time,
+            options.quiet,
         )?;
 
         for (plan, results) in window.iter().zip(blame_results) {
@@ -725,16 +726,29 @@ fn extract_domain(email: &str) -> String {
 /// `get_mailmap_author_name_email` helper: the name and email are rewritten
 /// according to the repository's `.mailmap` (falling back to the original
 /// identity if resolution fails or fields are missing).
-fn mailmap_author_name_email(mailmap: &Mailmap, sig: &Signature<'_>) -> (String, String) {
+fn mailmap_author_name_email(
+    mailmap: &Mailmap,
+    sig: &Signature<'_>,
+    quiet: bool,
+) -> (String, String) {
     match mailmap.resolve_signature(sig) {
         Ok(resolved) => (
             resolved.name().unwrap_or("").to_string(),
             resolved.email().unwrap_or("").to_string(),
         ),
-        Err(_) => (
-            sig.name().unwrap_or("").to_string(),
-            sig.email().unwrap_or("").to_string(),
-        ),
+        Err(e) => {
+            if !quiet {
+                eprintln!(
+                    "warning: mailmap resolution failed for '{} <{}>': {e}; using unmapped identity",
+                    sig.name().unwrap_or(""),
+                    sig.email().unwrap_or("")
+                );
+            }
+            (
+                sig.name().unwrap_or("").to_string(),
+                sig.email().unwrap_or("").to_string(),
+            )
+        }
     }
 }
 
@@ -812,6 +826,7 @@ fn blame_commit_window(
     progress: &ProgressBar,
     timing: &TimingStats,
     measure_time: bool,
+    quiet: bool,
 ) -> Result<Vec<Vec<(String, FileHistogram)>>> {
     let tasks: Vec<(usize, Oid, &TreeEntry)> = plans
         .iter()
@@ -853,6 +868,7 @@ fn blame_commit_window(
                         commit2cohort,
                         timing,
                         measure_time,
+                        quiet,
                     )
                     .with_context(|| format!("blaming {} at commit {}", entry.path, commit_oid))?;
                     progress.inc(1);
@@ -871,6 +887,7 @@ fn blame_commit_window(
     Ok(grouped)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn blame_one(
     repo: &Repository,
     mailmap: &Mailmap,
@@ -879,6 +896,7 @@ fn blame_one(
     commit2cohort: &HashMap<Oid, String>,
     timing: &TimingStats,
     measure_time: bool,
+    quiet: bool,
 ) -> Result<FileHistogram> {
     // Measure time spent on blame (I/O)
     let blame_start = if measure_time {
@@ -908,7 +926,7 @@ fn blame_one(
         }
         let orig_oid = hunk.orig_commit_id();
         let signature = hunk.orig_signature();
-        let (author_name, author_email) = mailmap_author_name_email(mailmap, &signature);
+        let (author_name, author_email) = mailmap_author_name_email(mailmap, &signature, quiet);
 
         let cohort = commit2cohort
             .get(&orig_oid)
