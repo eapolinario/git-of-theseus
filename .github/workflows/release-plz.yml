@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.repository_owner == 'eapolinario' }}
     concurrency:
-      group: release-plz-${{ github.ref }}
+      group: release-plz-pr
       cancel-in-progress: false
     steps:
       - name: Checkout repository
