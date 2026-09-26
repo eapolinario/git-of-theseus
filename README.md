@@ -10,6 +10,35 @@ Here's an example running it on this very repository — code broken down by the
 
 ## Installation
 
+### Pre-built binaries
+
+Download the archive for your platform from [GitHub Releases](https://github.com/eapolinario/git-of-theseus/releases), then extract its contents and add them to your `PATH`. Replace `<tag>` below with the release tag, including its leading `v` (for example, `v0.4.0`). On Linux:
+
+```shell
+curl -LO https://github.com/eapolinario/git-of-theseus/releases/download/<tag>/git-of-theseus-<tag>-x86_64-unknown-linux-gnu.tar.gz
+tar -xzf git-of-theseus-<tag>-x86_64-unknown-linux-gnu.tar.gz
+mkdir -p ~/.local/bin
+install -m 755 \
+  git-of-theseus-<tag>-x86_64-unknown-linux-gnu/git-of-theseus-analyze \
+  git-of-theseus-<tag>-x86_64-unknown-linux-gnu/git-of-theseus-line-plot \
+  git-of-theseus-<tag>-x86_64-unknown-linux-gnu/git-of-theseus-stack-plot \
+  git-of-theseus-<tag>-x86_64-unknown-linux-gnu/git-of-theseus-survival-plot \
+  ~/.local/bin/
+```
+
+Ensure `~/.local/bin` is on your `PATH`. Releases provide archives for Linux x86_64, macOS x86_64 and Apple Silicon, and Windows x86_64. On Windows, extract the `.zip` archive and add the directory containing the `.exe` files to your `PATH`.
+
+The Linux binaries link against system libraries, so a minimal installation may need them installed first (fontconfig and FreeType for plotting, OpenSSL for HTTPS support in libgit2):
+
+```shell
+# Debian/Ubuntu
+sudo apt-get install -y libfontconfig1 libfreetype6 libssl3
+# Fedora/RHEL
+sudo dnf install -y fontconfig freetype openssl-libs
+```
+
+### Build from source
+
 Clone the repository and build with Cargo:
 
 ```shell
@@ -113,11 +142,15 @@ line and stack plot commands support the same optional `--events` manifest.
 The Rust CLI is now the only shipped implementation; the Python package has
 been removed. A handful of features from the former Python CLI are not yet
 implemented in Rust and are documented below as a breaking change rather than
-a gap versus a still-available reference implementation: mailmap rewriting
-via `git check-mailmap` and interactive SIGINT pause/resume. Invocations that
-relied on those flags will now fail; see the deferred-features checklist below
-for tracking. `--merge` is the
-reverse case: a Rust-only addition that had no Python equivalent.
+a gap versus a still-available reference implementation: interactive SIGINT
+pause/resume. Invocations that relied on that flag will now fail; see the
+deferred-features checklist below for tracking. `--merge` is the reverse
+case: a Rust-only addition that had no Python equivalent.
+
+Mailmap author/email rewriting is implemented: `git-of-theseus-analyze`
+resolves each commit's author identity through the repository's `.mailmap`
+(via `git2::Repository::mailmap` / `Mailmap::resolve_signature`), mirroring
+the Python `get_mailmap_author_name_email` helper.
 
 ##### Rust port — TODO
 
@@ -135,7 +168,7 @@ The Rust port is being delivered incrementally. Tracked work:
 - [x] Unit + end-to-end integration tests; `fmt --check`, `clippy -D warnings`, build/test in CI; CI cross-checks Rust JSON via the Python plot scripts
 
 **Part 1.x — fill in deferred Python features**
-- [ ] `mailmap` author/email rewriting (the Python `get_mailmap_author_name_email` helper)
+- [x] `mailmap` author/email rewriting (the Python `get_mailmap_author_name_email` helper)
 - [x] `--opt` flag: write `git commit-graph` metadata before analysis for faster history walking on large repos (`libgit2`'s revwalk reads the commit-graph when present)
 - [ ] Interactive SIGINT pause / process-count adjustment (the `handler` function in the Python CLI)
 - [ ] Warn-and-fall-back behaviour exactly matching Python when `--branch` does not exist (currently emits a one-line warning to stderr; Python uses `warnings.warn` and special-cases detached HEAD)
@@ -158,7 +191,7 @@ The Rust port is being delivered incrementally. Tracked work:
 
 **Part 4 — Cutover**
 - [x] Rename `git-of-theseus-analyze-rs` → `git-of-theseus-analyze` now that the Rust CLI ships under the original command names
-- [ ] Ship pre-built binaries (release workflow + GitHub Releases)
+- [x] Ship pre-built binaries (release workflow + GitHub Releases)
 - [x] Update `Dockerfile`, `flake.nix`, `Justfile`, and the existing CI matrix accordingly
 - [x] Remove the Python `analyze.py` (and the rest of the Python package)
 

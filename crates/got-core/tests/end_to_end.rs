@@ -351,3 +351,80 @@ fn pipelined_analysis_matches_single_commit_windows() {
         );
     }
 }
+
+/// A repository's `.mailmap` file should rewrite author identities the same
+/// way `git check-mailmap` (and the Python `get_mailmap_author_name_email`
+/// helper it ported) would: commits authored under an old name/email are
+/// folded into the canonical identity, for both the `authors` and `domains`
+/// curves.
+#[test]
+fn analyze_applies_mailmap_author_rewriting() {
+    let dir = tempdir().unwrap();
+    let repo = dir.path();
+    run(repo, &["init", "-q", "-b", "main"]);
+    run(repo, &["config", "commit.gpgsign", "false"]);
+
+    fn run_as_old_identity(repo: &Path, date: &str, args: &[&str]) {
+        let status = Command::new("git")
+            .args(args)
+            .current_dir(repo)
+            .env("GIT_AUTHOR_NAME", "Alice")
+            .env("GIT_AUTHOR_EMAIL", "alice@oldmail.com")
+            .env("GIT_COMMITTER_NAME", "Alice")
+            .env("GIT_COMMITTER_EMAIL", "alice@oldmail.com")
+            .env("GIT_AUTHOR_DATE", date)
+            .env("GIT_COMMITTER_DATE", date)
+            .status()
+            .expect("git available");
+        assert!(status.success(), "git {args:?} failed");
+    }
+
+    fs::write(
+        repo.join(".mailmap"),
+        "Alice Wonderland <alice@newmail.com> Alice <alice@oldmail.com>\n",
+    )
+    .unwrap();
+    run(repo, &["add", ".mailmap"]);
+    run_as_old_identity(
+        repo,
+        "2020-01-01T00:00:00Z",
+        &["commit", "-q", "-m", "add mailmap"],
+    );
+
+    fs::write(repo.join("a.py"), "print('hi')\n").unwrap();
+    run(repo, &["add", "a.py"]);
+    run_as_old_identity(
+        repo,
+        "2020-01-20T00:00:00Z",
+        &["commit", "-q", "-m", "add a.py"],
+    );
+
+    let outdir = dir.path().join("out");
+    let result = analyze(&AnalyzeOptions {
+        repo_dir: repo.to_path_buf(),
+        branch: "main".into(),
+        outdir: outdir.clone(),
+        quiet: true,
+        procs: 1,
+        ..Default::default()
+    })
+    .unwrap();
+
+    // The mailmapped name/domain are present, the raw pre-mailmap identity
+    // is not.
+    assert!(result.authors.contains_key("Alice Wonderland"));
+    assert!(!result.authors.contains_key("Alice"));
+    assert!(result.domains.contains_key("newmail.com"));
+    assert!(!result.domains.contains_key("oldmail.com"));
+
+    let authors: serde_json::Value =
+        serde_json::from_slice(&fs::read(outdir.join("authors.json")).unwrap()).unwrap();
+    let labels: Vec<&str> = authors["labels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert!(labels.contains(&"Alice Wonderland"));
+    assert!(!labels.contains(&"Alice"));
+}
