@@ -38,14 +38,14 @@ This skill treats release prep as a controlled workflow, not a single command. I
    - This workflow validates that the tag matches the workspace version, builds the release binaries, generates WinGet manifests, publishes the GitHub Release, and updates the Homebrew formula.
    - Wait for all required jobs to finish and confirm the generated assets look correct.
 
-7. Validate downstream release packaging
-   - Ensure the GitHub Release contains the expected tar.gz/zip archives.
-   - Confirm the WinGet manifests were generated and validated.
-   - Confirm the Homebrew formula update landed on the formula repo branch.
+7. Publish downstream packaging
+   - Winget: generate the manifest files, validate them locally, and open the PR in your fork of `https://github.com/eapolinario/winget-pkgs`.
+   - Homebrew: update the in-repo formula in this project (`Formula/git-of-theseus.rb`), open the branch, and merge it to trigger the homebrew-side update.
 
-8. Submit the WinGet package to `microsoft/winget-pkgs`
-   - As described in `docs/winget.md`, download the generated YAML files from the GitHub Release and create the PR in `microsoft/winget-pkgs`.
-   - Keep the generated URL, version, SHA-256, and alias list intact.
+8. Complete the release
+   - Confirm the GitHub Release assets exist.
+   - Confirm the in-repo Homebrew formula change is merged.
+   - Confirm the Winget fork PR is open and ready for review.
 
 ## Operational command pattern
 
@@ -77,9 +77,11 @@ gh run list --workflow release.yml --limit 20
 ## Guardrails
 
 - Never create a tag before the version-bump PR is merged.
+- Use your fork of `winget-pkgs` for the downstream PRs, not the upstream Microsoft repo.
+- Keep Homebrew updates in-repo for this project unless you deliberately choose a separate tap model.
 - Never change dependency versions as part of a release PR unless the project specifically intends those changes.
 - Treat CLI surface changes as part of the compatibility contract and pick the version bump accordingly.
-- Do not consider the release complete until the GitHub Release is published and the Homebrew/WinGet downstream updates are confirmed.
+- Do not consider the release complete until the GitHub Release is published and the downstream package updates are coordinated.
 
 ## Files to check when acting
 
