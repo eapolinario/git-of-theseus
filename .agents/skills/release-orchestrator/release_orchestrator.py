@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -19,6 +20,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SESSION_ROOT = Path(os.environ.get("COPILOT_SESSION_STATE", "/tmp"))
+RELEASE_PR_PREFIX = "chore: prepare release v"
 
 
 def run(cmd: list[str], *, check: bool = True, capture: bool = True, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -46,7 +48,7 @@ def ensure_tools() -> None:
 def ensure_clean_repo() -> None:
     result = run(["git", "status", "--short", "--branch"], capture=True)
     status = result.stdout.strip().splitlines()
-    dirty = any(line.startswith("??") or line.startswith(" M") or line.startswith("M ") for line in status if line and not line.startswith("##"))
+    dirty = any(line for line in status if line and not line.startswith("##"))
     if dirty:
         raise SystemExit("Repository is not clean. Commit or stash changes before running a release.")
 
@@ -60,16 +62,32 @@ def workspace_version() -> str:
     raise SystemExit("Could not determine the workspace version from Cargo metadata.")
 
 
-def open_release_pr() -> str:
+def find_release_pr(prs: list[dict[str, object]], version: str | None = None) -> str | None:
+    expected_title = f"{RELEASE_PR_PREFIX}{version}".lower() if version else None
+    matching = [
+        pr
+        for pr in prs
+        if (
+            str(pr.get("title", "")).lower() == expected_title
+            if expected_title
+            else str(pr.get("title", "")).lower().startswith(RELEASE_PR_PREFIX)
+        )
+    ]
+    if not matching:
+        return None
+    return str(sorted(matching, key=lambda pr: int(pr["number"]))[-1]["number"])
+
+
+def open_release_pr(version: str | None = None) -> str:
     print("Opening the version-bump PR via the repo workflow.")
     run(["gh", "workflow", "run", "release-plz.yml"])
     time.sleep(10)
     result = run(["gh", "pr", "list", "--state", "open", "--json", "number,title"], capture=True)
     prs = json.loads(result.stdout or "[]")
-    release_prs = [pr for pr in prs if "Prepare release version" in str(pr.get("title", ""))]
-    if not release_prs:
+    pr_number = find_release_pr(prs, version)
+    if pr_number is None:
         raise SystemExit("No release version PR was created yet.")
-    return str(sorted(release_prs, key=lambda pr: int(pr["number"]))[-1]["number"])
+    return pr_number
 
 
 def wait_for_checks(pr_number: str, timeout_minutes: int = 60) -> None:
@@ -91,31 +109,21 @@ def merge_pr(pr_number: str) -> None:
 
 def maybe_update_version_pr(version: str | None) -> str:
     if version is None:
-        current = workspace_version()
-        print(f"Using repository version {current}.")
-        return current
+        pr_number = open_release_pr()
+        wait_for_checks(pr_number)
+        merge_pr(pr_number)
+        run(["git", "checkout", "master"])
+        run(["git", "pull", "--ff-only", "origin", "master"])
+        return workspace_version()
 
     if not version.startswith("v"):
         version = f"v{version}"
 
     result = run(["gh", "pr", "list", "--state", "open", "--json", "number,title"], capture=True)
     prs = json.loads(result.stdout or "[]")
-    matching = [pr for pr in prs if f"prepare release {version}" in str(pr.get("title", "")).lower()]
-    if matching:
-        pr_number = str(sorted(matching, key=lambda pr: int(pr["number"]))[-1]["number"])
-        wait_for_checks(pr_number)
-        merge_pr(pr_number)
-        return version[1:]
-
-    print(f"No matching version bump PR for {version}; running release-plz workflow.")
-    run(["gh", "workflow", "run", "release-plz.yml"])
-    time.sleep(10)
-    result = run(["gh", "pr", "list", "--state", "open", "--json", "number,title"], capture=True)
-    prs = json.loads(result.stdout or "[]")
-    matching = [pr for pr in prs if "prepare release" in str(pr.get("title", "")).lower()]
-    if not matching:
-        raise SystemExit(f"No version-bump PR was found for {version}.")
-    pr_number = str(sorted(matching, key=lambda pr: int(pr["number"]))[-1]["number"])
+    pr_number = find_release_pr(prs, version[1:])
+    if pr_number is None:
+        pr_number = open_release_pr(version[1:])
     wait_for_checks(pr_number)
     merge_pr(pr_number)
     return version[1:]
@@ -141,16 +149,36 @@ def wait_for_release(tag_name: str, timeout_minutes: int = 90) -> None:
     print(f"Waiting for the GitHub Release workflow for {tag_name} to finish successfully...")
     deadline = time.time() + timeout_minutes * 60
     while time.time() < deadline:
-        release_result = run(["gh", "release", "view", tag_name, "--json", "tagName,isDraft,url"], check=False)
-        if release_result.returncode == 0:
-            try:
-                payload = json.loads(release_result.stdout or "{}")
-            except json.JSONDecodeError:
-                payload = {}
-            if payload.get("tagName") == tag_name and payload.get("isDraft") is False:
-                return
+        result = run(
+            [
+                "gh",
+                "run",
+                "list",
+                "--workflow",
+                "release.yml",
+                "--event",
+                "push",
+                "--limit",
+                "100",
+                "--json",
+                "databaseId,headBranch,status,conclusion",
+            ],
+            check=False,
+        )
+        if result.returncode == 0:
+            runs = json.loads(result.stdout or "[]")
+            matching = [workflow_run for workflow_run in runs if workflow_run.get("headBranch") == tag_name]
+            if matching:
+                workflow_run = matching[0]
+                if workflow_run.get("status") == "completed":
+                    if workflow_run.get("conclusion") == "success":
+                        return
+                    raise SystemExit(
+                        f"Release workflow run {workflow_run.get('databaseId')} finished with "
+                        f"{workflow_run.get('conclusion')}."
+                    )
         time.sleep(30)
-    raise SystemExit(f"Timed out waiting for the GitHub Release to publish for {tag_name}.")
+    raise SystemExit(f"Timed out waiting for the release workflow to finish for {tag_name}.")
 
 
 def generate_winget_manifests(version: str) -> None:
@@ -168,8 +196,10 @@ def generate_winget_manifests(version: str) -> None:
 
     run(["gh", "release", "download", tag, "--repo", "eapolinario/git-of-theseus", "--pattern", "*x86_64-pc-windows-msvc.zip", "--dir", str(temp_dir)], check=True)
     run(["gh", "release", "download", tag, "--repo", "eapolinario/git-of-theseus", "--pattern", "*aarch64-pc-windows-msvc.zip", "--dir", str(temp_dir)], check=True)
-    x64_sha256 = subprocess.run(["sha256sum", str(temp_dir / x64_archive)], text=True, capture_output=True, check=True).stdout.split()[0]
-    arm64_sha256 = subprocess.run(["sha256sum", str(temp_dir / arm64_archive)], text=True, capture_output=True, check=True).stdout.split()[0]
+    with (temp_dir / x64_archive).open("rb") as archive:
+        x64_sha256 = hashlib.file_digest(archive, "sha256").hexdigest()
+    with (temp_dir / arm64_archive).open("rb") as archive:
+        arm64_sha256 = hashlib.file_digest(archive, "sha256").hexdigest()
 
     (manifest_dir / "Eapolinario.GitOfTheseus.yaml").write_text(
         textwrap.dedent(
@@ -249,7 +279,7 @@ def generate_winget_manifests(version: str) -> None:
 
     run(["winget", "validate", "--manifest", str(manifest_dir)], cwd=temp_dir)
     run(["git", "-C", str(temp_dir), "checkout", "-b", f"eapolinario-git-of-theseus-v{version}"])
-    run(["git", "-C", str(temp_dir), "add", "."])
+    run(["git", "-C", str(temp_dir), "add", str(manifest_dir.relative_to(temp_dir))])
     run(["git", "-C", str(temp_dir), "commit", "-m", f"Add Git of Theseus {version} package manifests"])
     run(["git", "-C", str(temp_dir), "push", "-u", "origin", f"eapolinario-git-of-theseus-v{version}"])
     run([
@@ -257,7 +287,7 @@ def generate_winget_manifests(version: str) -> None:
         "pr",
         "create",
         "--repo",
-        "eapolinario/winget-pkgs",
+        "microsoft/winget-pkgs",
         "--base",
         "master",
         "--head",
@@ -269,38 +299,13 @@ def generate_winget_manifests(version: str) -> None:
     ])
 
 
-def update_homebrew_formula(version: str) -> None:
-    tag = get_release_tag(version)
-    release_dir = Path(tempfile.mkdtemp(prefix="homebrew-release-", dir=str(SESSION_ROOT)))
-    run(["gh", "release", "download", tag, "--repo", "eapolinario/git-of-theseus", "--pattern", "*apple-darwin.tar.gz", "--dir", str(release_dir)])
-    arm64_sha = subprocess.run(["sha256sum", str(release_dir / f"git-of-theseus-{tag}-aarch64-apple-darwin.tar.gz")], text=True, capture_output=True, check=True).stdout.split()[0]
-    x86_sha = subprocess.run(["sha256sum", str(release_dir / f"git-of-theseus-{tag}-x86_64-apple-darwin.tar.gz")], text=True, capture_output=True, check=True).stdout.split()[0]
-    template = (REPO_ROOT / ".github" / "homebrew" / "git-of-theseus.rb.tmpl").read_text()
-    formula = template.replace("@VERSION@", version).replace("@ARM64_SHA256@", arm64_sha).replace("@X86_64_SHA256@", x86_sha)
-    if "@" in formula:
-        raise SystemExit("Homebrew formula template still contains unresolved placeholders.")
-    formula_path = REPO_ROOT / "Formula" / "git-of-theseus.rb"
-    formula_path.parent.mkdir(exist_ok=True)
-    formula_path.write_text(formula)
+def verify_homebrew_formula(version: str) -> None:
     run(["git", "checkout", "master"])
     run(["git", "pull", "--ff-only", "origin", "master"])
-    run(["git", "checkout", "-b", f"chore/homebrew-update-v{version}"])
-    run(["git", "add", str(formula_path.relative_to(REPO_ROOT))])
-    run(["git", "commit", "-m", f"Update Homebrew formula for {tag}"])
-    run(["git", "push", "origin", f"chore/homebrew-update-v{version}"])
-    run([
-        "gh",
-        "pr",
-        "create",
-        "--base",
-        "master",
-        "--head",
-        f"chore/homebrew-update-v{version}",
-        "--title",
-        f"Update Homebrew formula for {tag}",
-        "--body",
-        "Generated from the tagged GitHub Release assets for Git of Theseus.",
-    ])
+    formula_path = REPO_ROOT / "Formula" / "git-of-theseus.rb"
+    if not formula_path.is_file() or f'version "{version}"' not in formula_path.read_text():
+        raise SystemExit(f"The release workflow did not update the Homebrew formula to {version}.")
+    print(f"Verified the Homebrew formula was updated to {version} by the release workflow.")
 
 
 def parse_args() -> argparse.Namespace:
@@ -308,7 +313,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--version", help="Explicit release version, e.g. 0.5.0")
     parser.add_argument("--skip-version-pr", action="store_true", help="Skip opening and merging the release-plz version bump PR")
     parser.add_argument("--skip-winget", action="store_true", help="Skip creating the downstream WinGet PR")
-    parser.add_argument("--skip-homebrew", action="store_true", help="Skip updating the Homebrew formula")
+    parser.add_argument("--skip-homebrew", action="store_true", help="Skip verifying the release workflow's Homebrew formula update")
     parser.add_argument("--skip-release-wait", action="store_true", help="Do not wait for the GitHub Release to publish")
     return parser.parse_args()
 
@@ -335,7 +340,7 @@ def main() -> int:
         generate_winget_manifests(version)
 
     if not args.skip_homebrew:
-        update_homebrew_formula(version)
+        verify_homebrew_formula(version)
 
     print("Release orchestration complete.")
     return 0

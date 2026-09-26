@@ -39,13 +39,13 @@ This skill treats release prep as a controlled workflow, not a single command. I
    - Wait for all required jobs to finish and confirm the generated assets look correct.
 
 7. Publish downstream packaging
-   - Winget: generate the manifest files, validate them locally, and open the PR in your fork of `https://github.com/eapolinario/winget-pkgs`.
-   - Homebrew: update the in-repo formula in this project (`Formula/git-of-theseus.rb`), open the branch, and merge it to trigger the homebrew-side update.
+   - Winget: generate the manifest files in your fork, validate them locally, and open a PR from that fork to `https://github.com/microsoft/winget-pkgs`.
+   - Homebrew: verify that the release workflow committed the updated in-repo formula (`Formula/git-of-theseus.rb`) directly to `master`.
 
 8. Complete the release
    - Confirm the GitHub Release assets exist.
-   - Confirm the in-repo Homebrew formula change is merged.
-   - Confirm the Winget fork PR is open and ready for review.
+   - Confirm the release workflow's in-repo Homebrew formula commit is on `master`.
+   - Confirm the Winget PR to `microsoft/winget-pkgs` is open and ready for review.
 
 ## Operational command pattern
 
@@ -56,7 +56,7 @@ Use a safety-first sequence:
 gh workflow run release-plz.yml
 
 # 2) inspect the PR and check status
-gh pr list --search "Prepare release version"
+gh pr list --search "chore: prepare release v in:title"
 gh pr view <pr-number> --web
 gh pr checks <pr-number>
 
@@ -77,8 +77,8 @@ gh run list --workflow release.yml --limit 20
 ## Guardrails
 
 - Never create a tag before the version-bump PR is merged.
-- Use your fork of `winget-pkgs` for the downstream PRs, not the upstream Microsoft repo.
-- Keep Homebrew updates in-repo for this project unless you deliberately choose a separate tap model.
+- Use your `winget-pkgs` fork for the PR head and `microsoft/winget-pkgs` for its destination.
+- Let the tag-driven release workflow update the in-repo Homebrew formula directly on `master`.
 - Never change dependency versions as part of a release PR unless the project specifically intends those changes.
 - Treat CLI surface changes as part of the compatibility contract and pick the version bump accordingly.
 - Do not consider the release complete until the GitHub Release is published and the downstream package updates are coordinated.
