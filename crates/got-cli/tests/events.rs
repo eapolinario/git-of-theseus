@@ -7,6 +7,7 @@ use tempfile::tempdir;
 const LINE: &str = env!("CARGO_BIN_EXE_git-of-theseus-line-plot");
 const STACK: &str = env!("CARGO_BIN_EXE_git-of-theseus-stack-plot");
 const SURVIVAL: &str = env!("CARGO_BIN_EXE_git-of-theseus-survival-plot");
+const ANALYZE: &str = env!("CARGO_BIN_EXE_git-of-theseus-analyze");
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -78,4 +79,59 @@ fn all_plot_help_lists_events() {
         assert!(result.status.success());
         assert!(String::from_utf8_lossy(&result.stdout).contains("--events"));
     }
+}
+
+#[test]
+fn opt_writes_a_commit_graph() {
+    let dir = tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    fs::create_dir(&repo).unwrap();
+
+    let result = Command::new("git")
+        .args(["init", "-q"])
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    assert!(result.status.success());
+    let result = Command::new("git")
+        .args(["checkout", "-q", "-b", "main"])
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    assert!(result.status.success());
+    fs::write(repo.join("a.rs"), "fn main() {}\n").unwrap();
+    let result = Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    assert!(result.status.success());
+    let result = Command::new("git")
+        .args([
+            "-c",
+            "user.name=Test User",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-qm",
+            "initial",
+        ])
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    assert!(result.status.success());
+
+    let result = Command::new(ANALYZE)
+        .args(["--opt", "--quiet", "--branch", "main"])
+        .arg("--outdir")
+        .arg(dir.path().join("out"))
+        .arg(&repo)
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(repo.join(".git/objects/info/commit-graph").exists());
 }
