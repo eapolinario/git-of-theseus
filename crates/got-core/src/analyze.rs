@@ -328,7 +328,7 @@ fn analyze_in_memory_with_pool(
     let repo = Repository::open(&options.repo_dir)
         .with_context(|| format!("opening repository {}", options.repo_dir.display()))?;
 
-    let branch_oid = resolve_branch(&repo, &options.branch, options.quiet)?;
+    let branch_oid = resolve_branch(&repo, &options.branch)?;
     let filter = PathFilter::new(&options.only, &options.ignore, options.all_filetypes)?;
 
     // Step 1: walk every reachable commit on the branch, build cohort map
@@ -718,20 +718,26 @@ fn extract_domain(email: &str) -> String {
     }
 }
 
-fn resolve_branch(repo: &Repository, branch: &str, quiet: bool) -> Result<Oid> {
+fn resolve_branch(repo: &Repository, branch: &str) -> Result<Oid> {
     if let Ok(reference) = repo.find_reference(&format!("refs/heads/{branch}")) {
         if let Some(oid) = reference.target() {
             return Ok(oid);
         }
     }
-    // Fallback: HEAD (handles detached HEAD too).
     let head = repo.head().context("resolving HEAD")?;
     let head_oid = head
         .target()
         .ok_or_else(|| anyhow!("HEAD is not a direct reference"))?;
-    if !quiet {
+    if head.is_branch() {
+        let default_branch = head
+            .shorthand()
+            .ok_or_else(|| anyhow!("resolving HEAD branch name"))?;
         eprintln!(
-            "warning: requested branch '{branch}' does not exist; falling back to HEAD ({head_oid})"
+            "Requested branch: '{branch}' does not exist. Falling back to default branch '{default_branch}'"
+        );
+    } else {
+        eprintln!(
+            "Requested branch: '{branch}' does not exist. Falling back to HEAD commit '{head_oid}'"
         );
     }
     Ok(head_oid)
