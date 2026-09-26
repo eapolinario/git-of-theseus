@@ -80,9 +80,9 @@ jobs:
               exit 1
             fi
           elif [ -n "$PR_BASE_REF" ]; then
-            baseline_rev="$(resolve_origin_branch "$PR_BASE_REF")"
+            baseline_rev="$(resolve_origin_branch "$PR_BASE_REF")" || exit 1
           else
-            baseline_rev="$(resolve_origin_branch "$DEFAULT_BRANCH")"
+            baseline_rev="$(resolve_origin_branch "$DEFAULT_BRANCH")" || exit 1
           fi
 
           cargo semver-checks --package "$PACKAGE" --baseline-rev "$baseline_rev"
