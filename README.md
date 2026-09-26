@@ -17,10 +17,11 @@ Download the archive for your platform from [GitHub Releases](https://github.com
 ```shell
 curl -LO https://github.com/eapolinario/git-of-theseus/releases/download/<tag>/git-of-theseus-<tag>-x86_64-unknown-linux-gnu.tar.gz
 tar -xzf git-of-theseus-<tag>-x86_64-unknown-linux-gnu.tar.gz
+mkdir -p ~/.local/bin
 install -m 755 git-of-theseus-<tag>-x86_64-unknown-linux-gnu/git-of-theseus-* ~/.local/bin/
 ```
 
-Releases provide archives for Linux x86_64, macOS x86_64 and Apple Silicon, and Windows x86_64. On Windows, extract the `.tar.gz` archive and add the directory containing the `.exe` files to your `PATH`.
+Releases provide archives for Linux x86_64, macOS x86_64 and Apple Silicon, and Windows x86_64. On Windows, extract the `.zip` archive and add the directory containing the `.exe` files to your `PATH`.
 
 ### Build from source
 
