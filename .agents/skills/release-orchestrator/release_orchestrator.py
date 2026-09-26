@@ -79,9 +79,60 @@ def find_release_pr(prs: list[dict[str, object]], version: str | None = None) ->
 
 
 def open_release_pr(version: str | None = None) -> str:
+    result = run(["gh", "pr", "list", "--state", "open", "--json", "number,title"], capture=True)
+    pr_number = find_release_pr(json.loads(result.stdout or "[]"), version)
+    if pr_number is not None:
+        return pr_number
+
     print("Opening the version-bump PR via the repo workflow.")
+    result = run(
+        [
+            "gh",
+            "run",
+            "list",
+            "--workflow",
+            "release-plz.yml",
+            "--event",
+            "workflow_dispatch",
+            "--limit",
+            "100",
+            "--json",
+            "databaseId",
+        ]
+    )
+    previous_run_ids = {workflow_run["databaseId"] for workflow_run in json.loads(result.stdout or "[]")}
     run(["gh", "workflow", "run", "release-plz.yml"])
-    time.sleep(10)
+    deadline = time.time() + 5 * 60
+    run_id = None
+    while time.time() < deadline:
+        result = run(
+            [
+                "gh",
+                "run",
+                "list",
+                "--workflow",
+                "release-plz.yml",
+                "--event",
+                "workflow_dispatch",
+                "--limit",
+                "100",
+                "--json",
+                "databaseId",
+            ]
+        )
+        new_runs = [
+            workflow_run
+            for workflow_run in json.loads(result.stdout or "[]")
+            if workflow_run["databaseId"] not in previous_run_ids
+        ]
+        if new_runs:
+            run_id = str(new_runs[0]["databaseId"])
+            break
+        time.sleep(5)
+    if run_id is None:
+        raise SystemExit("Timed out waiting for the release-plz workflow run to start.")
+    run(["gh", "run", "watch", run_id, "--exit-status"])
+
     result = run(["gh", "pr", "list", "--state", "open", "--json", "number,title"], capture=True)
     prs = json.loads(result.stdout or "[]")
     pr_number = find_release_pr(prs, version)
