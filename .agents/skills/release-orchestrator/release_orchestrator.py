@@ -63,6 +63,11 @@ def workspace_version() -> str:
     raise SystemExit("Could not determine the workspace version from Cargo metadata.")
 
 
+def sync_master() -> None:
+    run(["git", "fetch", "origin", "master"])
+    run(["git", "checkout", "-B", "master", "origin/master"])
+
+
 def find_release_pr(prs: list[dict[str, object]], version: str | None = None) -> str | None:
     expected_title = f"{RELEASE_PR_PREFIX}{version}".lower() if version else None
     matching = [
@@ -151,8 +156,7 @@ def maybe_update_version_pr(version: str | None) -> str:
         pr_number = open_release_pr()
         wait_for_checks(pr_number)
         merge_pr(pr_number)
-        run(["git", "checkout", "master"])
-        run(["git", "pull", "--ff-only", "origin", "master"])
+        sync_master()
         return workspace_version()
 
     if not version.startswith("v"):
@@ -168,8 +172,7 @@ def maybe_update_version_pr(version: str | None) -> str:
         pr_number = open_release_pr(version[1:])
     wait_for_checks(pr_number)
     merge_pr(pr_number)
-    run(["git", "checkout", "master"])
-    run(["git", "pull", "--ff-only", "origin", "master"])
+    sync_master()
     merged_version = workspace_version()
     if merged_version != version[1:]:
         raise SystemExit(f"Merged workspace version {merged_version} does not match requested version {version[1:]}.")
@@ -185,8 +188,10 @@ def get_release_tag(version: str) -> str:
 def tag_release(version: str) -> str:
     tag_name = get_release_tag(version)
     print(f"Creating tag {tag_name}.")
-    run(["git", "checkout", "master"])
-    run(["git", "pull", "--ff-only", "origin", "master"])
+    sync_master()
+    current_version = workspace_version()
+    if current_version != version:
+        raise SystemExit(f"Workspace version {current_version} does not match requested version {version}.")
     run(["git", "tag", "-a", tag_name, "-m", f"Release {tag_name}"])
     run(["git", "push", "origin", tag_name])
     return tag_name
@@ -347,8 +352,7 @@ def generate_winget_manifests(version: str) -> None:
 
 
 def verify_homebrew_formula(version: str) -> None:
-    run(["git", "checkout", "master"])
-    run(["git", "pull", "--ff-only", "origin", "master"])
+    sync_master()
     formula_path = REPO_ROOT / "Formula" / "git-of-theseus.rb"
     if not formula_path.is_file() or f'version "{version}"' not in formula_path.read_text():
         raise SystemExit(f"The release workflow did not update the Homebrew formula to {version}.")
