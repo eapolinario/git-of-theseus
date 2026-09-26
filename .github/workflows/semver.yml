@@ -57,8 +57,11 @@ jobs:
           if [ -n "$INPUT_BASELINE_REF" ]; then
             if git rev-parse --verify --quiet "$INPUT_BASELINE_REF^{commit}" >/dev/null; then
               baseline_rev="$INPUT_BASELINE_REF"
-            else
+            elif git rev-parse --verify --quiet "origin/$INPUT_BASELINE_REF^{commit}" >/dev/null; then
               baseline_rev="origin/$INPUT_BASELINE_REF"
+            else
+              echo "::error::Could not resolve baseline_ref '$INPUT_BASELINE_REF' as a commit, tag, ref, or origin branch"
+              exit 1
             fi
           elif [ -n "$PR_BASE_REF" ]; then
             baseline_rev="origin/$PR_BASE_REF"
