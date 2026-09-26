@@ -43,7 +43,15 @@ that both of these files are updated in the same PR:
 
 If release-plz chooses an unsuitable version, edit the PR before merging it. A
 manual fallback is acceptable: update the root `[workspace.package]` version,
-run `cargo update --workspace`, and review those changes in a normal PR.
+run a Cargo command such as `cargo check --workspace` to refresh only the
+workspace package version entries in `Cargo.lock`, and review those changes in a
+normal PR. Do not update dependency versions unless that is an intentional part
+of the release PR.
+
+Configure the workflow with a `RELEASE_PLZ_TOKEN` secret from a GitHub App or
+personal access token if generated release-plz PRs should trigger the normal PR
+checks. The workflow falls back to `GITHUB_TOKEN`, but PRs created with the
+default token do not trigger other workflows.
 
 ## API-break guardrail
 
