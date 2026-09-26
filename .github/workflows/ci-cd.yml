@@ -45,7 +45,7 @@ jobs:
 
   test-nix:
     runs-on: ubuntu-latest
-    name: Build and test via Nix
+    name: Build and smoke-test via Nix
     permissions:
       contents: read
     steps:
@@ -64,8 +64,14 @@ jobs:
       - name: Build package with nix
         run: nix build
 
-      - name: Run tests in Nix dev shell
-        run: nix develop --command just test
+      - name: Smoke-test packaged binaries
+        run: |
+          for cli in analyze line-plot stack-plot survival-plot; do
+            "./result/bin/git-of-theseus-$cli" --help > /dev/null
+          done
+          ./result/bin/git-of-theseus-analyze --quiet --outdir "$RUNNER_TEMP/got-nix" .
+          ./result/bin/git-of-theseus-stack-plot "$RUNNER_TEMP/got-nix/cohorts.json" --outfile "$RUNNER_TEMP/got-nix/cohorts.png"
+          test -s "$RUNNER_TEMP/got-nix/cohorts.png"
 
   test-rust:
     runs-on: ubuntu-latest
