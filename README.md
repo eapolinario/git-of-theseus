@@ -28,6 +28,15 @@ install -m 755 \
 
 Ensure `~/.local/bin` is on your `PATH`. Releases provide archives for Linux x86_64, macOS x86_64 and Apple Silicon, and Windows x86_64. On Windows, extract the `.zip` archive and add the directory containing the `.exe` files to your `PATH`.
 
+The Linux binaries link against system libraries, so a minimal installation may need them installed first (fontconfig and FreeType for plotting, OpenSSL for HTTPS support in libgit2):
+
+```shell
+# Debian/Ubuntu
+sudo apt-get install -y libfontconfig1 libfreetype6 libssl3
+# Fedora/RHEL
+sudo dnf install -y fontconfig freetype openssl-libs
+```
+
 ### Build from source
 
 Clone the repository and build with Cargo:
