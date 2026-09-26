@@ -14,7 +14,6 @@
 //! via `git2::Repository::mailmap` / `Mailmap::resolve_signature`.
 //!
 //! Features intentionally deferred to follow-up PRs:
-//! - `--opt` git-commit-graph generation
 //! - Interactive SIGINT pause / process-count adjustment
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
