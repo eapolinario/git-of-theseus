@@ -1,16 +1,19 @@
 # Releasing through WinGet
 
-The release workflow creates a WinGet manifest for the Windows x64 archive
-after building it. The manifest is validated with `winget validate` on the
-Windows runner and attached to the GitHub Release as three YAML assets:
+The release workflow builds the Windows x64 and arm64 archives, then
+generates a single WinGet manifest covering both architectures. The
+manifest is validated with `winget validate` on a Windows runner and
+attached to the GitHub Release as three YAML assets:
 
 - `Eapolinario.GitOfTheseus.yaml`
 - `Eapolinario.GitOfTheseus.installer.yaml`
 - `Eapolinario.GitOfTheseus.locale.en-US.yaml`
 
-The installer manifest points at the tagged GitHub Release ZIP and uses its
-SHA-256. It declares every executable in that archive as a portable command
-alias, so all four commands are added to `PATH`.
+The installer manifest declares one `Installers` entry per architecture
+(`x64` and `arm64`), each pointing at its tagged GitHub Release ZIP and
+using its SHA-256. It declares every executable in that archive as a
+portable command alias, so all four commands are added to `PATH` on
+either architecture.
 
 ## Submitting a tagged release
 

@@ -34,6 +34,10 @@ jobs:
             target: x86_64-pc-windows-msvc
             executable_suffix: ".exe"
             archive_extension: zip
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            executable_suffix: ".exe"
+            archive_extension: zip
     steps:
       - uses: actions/checkout@v4
 
@@ -77,15 +81,34 @@ jobs:
           New-Item -ItemType Directory dist
           Compress-Archive -Path $archive -DestinationPath "dist/$archive.zip"
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*.${{ matrix.archive_extension }}
+          if-no-files-found: error
+
+  winget-manifests:
+    name: Generate and validate WinGet manifests
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4.1.7
+        with:
+          path: dist
+          pattern: "*-pc-windows-msvc"
+          merge-multiple: true
+
       - name: Generate and validate WinGet manifests
-        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
           $version = $tag -replace "^v", ""
-          $archive = "git-of-theseus-$tag-${{ matrix.target }}"
-          $url = "https://github.com/${{ github.repository }}/releases/download/$tag/$archive.zip"
-          $sha256 = (Get-FileHash "dist/$archive.zip" -Algorithm SHA256).Hash
+          $x64Archive = "git-of-theseus-$tag-x86_64-pc-windows-msvc"
+          $arm64Archive = "git-of-theseus-$tag-aarch64-pc-windows-msvc"
+          $x64Url = "https://github.com/${{ github.repository }}/releases/download/$tag/$x64Archive.zip"
+          $arm64Url = "https://github.com/${{ github.repository }}/releases/download/$tag/$arm64Archive.zip"
+          $x64Sha256 = (Get-FileHash "dist/$x64Archive.zip" -Algorithm SHA256).Hash
+          $arm64Sha256 = (Get-FileHash "dist/$arm64Archive.zip" -Algorithm SHA256).Hash
           $manifestDir = "winget-manifests/e/Eapolinario/GitOfTheseus/$version"
           New-Item -ItemType Directory -Force $manifestDir
           @"
@@ -104,16 +127,30 @@ jobs:
             - Architecture: x64
               InstallerType: zip
               NestedInstallerType: portable
-              InstallerUrl: $url
-              InstallerSha256: $sha256
+              InstallerUrl: $x64Url
+              InstallerSha256: $x64Sha256
               NestedInstallerFiles:
-                - RelativeFilePath: $archive/git-of-theseus-analyze.exe
+                - RelativeFilePath: $x64Archive/git-of-theseus-analyze.exe
                   PortableCommandAlias: git-of-theseus-analyze
-                - RelativeFilePath: $archive/git-of-theseus-line-plot.exe
+                - RelativeFilePath: $x64Archive/git-of-theseus-line-plot.exe
                   PortableCommandAlias: git-of-theseus-line-plot
-                - RelativeFilePath: $archive/git-of-theseus-stack-plot.exe
+                - RelativeFilePath: $x64Archive/git-of-theseus-stack-plot.exe
                   PortableCommandAlias: git-of-theseus-stack-plot
-                - RelativeFilePath: $archive/git-of-theseus-survival-plot.exe
+                - RelativeFilePath: $x64Archive/git-of-theseus-survival-plot.exe
+                  PortableCommandAlias: git-of-theseus-survival-plot
+            - Architecture: arm64
+              InstallerType: zip
+              NestedInstallerType: portable
+              InstallerUrl: $arm64Url
+              InstallerSha256: $arm64Sha256
+              NestedInstallerFiles:
+                - RelativeFilePath: $arm64Archive/git-of-theseus-analyze.exe
+                  PortableCommandAlias: git-of-theseus-analyze
+                - RelativeFilePath: $arm64Archive/git-of-theseus-line-plot.exe
+                  PortableCommandAlias: git-of-theseus-line-plot
+                - RelativeFilePath: $arm64Archive/git-of-theseus-stack-plot.exe
+                  PortableCommandAlias: git-of-theseus-stack-plot
+                - RelativeFilePath: $arm64Archive/git-of-theseus-survival-plot.exe
                   PortableCommandAlias: git-of-theseus-survival-plot
           ManifestType: installer
           ManifestVersion: 1.10.0
@@ -138,20 +175,13 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.target }}
-          path: dist/*.${{ matrix.archive_extension }}
-          if-no-files-found: error
-
-      - uses: actions/upload-artifact@v4
-        if: runner.os == 'Windows'
-        with:
           name: winget-manifests
           path: winget-manifests
           if-no-files-found: error
 
   release:
     name: Publish GitHub Release
-    needs: build
+    needs: [build, winget-manifests]
     runs-on: ubuntu-latest
     permissions:
       contents: write
