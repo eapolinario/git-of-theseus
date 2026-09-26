@@ -44,7 +44,10 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Install cargo-semver-checks
-        run: cargo install cargo-semver-checks --locked
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-semver-checks
+          fallback: none
 
       - name: Run cargo-semver-checks
         env:
