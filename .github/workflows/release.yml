@@ -1,0 +1,30 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Build release binaries
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies (fontconfig, freetype)
+        run: sudo apt-get update -qq && sudo apt-get install -y libfontconfig1-dev libfreetype6-dev
+
+      - name: Verify tag matches workspace version
+        run: |
+          test "v$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "got-core") | .version')" = "$GITHUB_REF_NAME"
+
+      - name: cargo build --release
+        run: cargo build --workspace --release --locked
