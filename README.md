@@ -10,6 +10,35 @@ Here's an example running it on this very repository — code broken down by the
 
 ## Installation
 
+### Pre-built binaries
+
+Download the archive for your platform from [GitHub Releases](https://github.com/eapolinario/git-of-theseus/releases), then extract its contents and add them to your `PATH`. Replace `<tag>` below with the release tag, including its leading `v` (for example, `v0.4.0`). On Linux:
+
+```shell
+curl -LO https://github.com/eapolinario/git-of-theseus/releases/download/<tag>/git-of-theseus-<tag>-x86_64-unknown-linux-gnu.tar.gz
+tar -xzf git-of-theseus-<tag>-x86_64-unknown-linux-gnu.tar.gz
+mkdir -p ~/.local/bin
+install -m 755 \
+  git-of-theseus-<tag>-x86_64-unknown-linux-gnu/git-of-theseus-analyze \
+  git-of-theseus-<tag>-x86_64-unknown-linux-gnu/git-of-theseus-line-plot \
+  git-of-theseus-<tag>-x86_64-unknown-linux-gnu/git-of-theseus-stack-plot \
+  git-of-theseus-<tag>-x86_64-unknown-linux-gnu/git-of-theseus-survival-plot \
+  ~/.local/bin/
+```
+
+Ensure `~/.local/bin` is on your `PATH`. Releases provide archives for Linux x86_64, macOS x86_64 and Apple Silicon, and Windows x86_64. On Windows, extract the `.zip` archive and add the directory containing the `.exe` files to your `PATH`.
+
+The Linux binaries link against system libraries, so a minimal installation may need them installed first (fontconfig and FreeType for plotting, OpenSSL for HTTPS support in libgit2):
+
+```shell
+# Debian/Ubuntu
+sudo apt-get install -y libfontconfig1 libfreetype6 libssl3
+# Fedora/RHEL
+sudo dnf install -y fontconfig freetype openssl-libs
+```
+
+### Build from source
+
 Clone the repository and build with Cargo:
 
 ```shell
@@ -152,7 +181,7 @@ The Rust port is being delivered incrementally. Tracked work:
 
 **Part 4 — Cutover**
 - [x] Rename `git-of-theseus-analyze-rs` → `git-of-theseus-analyze` now that the Rust CLI ships under the original command names
-- [ ] Ship pre-built binaries (release workflow + GitHub Releases)
+- [x] Ship pre-built binaries (release workflow + GitHub Releases)
 - [x] Update `Dockerfile`, `flake.nix`, `Justfile`, and the existing CI matrix accordingly
 - [x] Remove the Python `analyze.py` (and the rest of the Python package)
 
