@@ -1,0 +1,74 @@
+name: Release binaries
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            executable_suffix: ""
+          - os: macos-13
+            target: x86_64-apple-darwin
+            executable_suffix: ""
+          - os: macos-14
+            target: aarch64-apple-darwin
+            executable_suffix: ""
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            executable_suffix: ".exe"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y libfontconfig1-dev libfreetype6-dev
+
+      - name: Build release binaries
+        run: cargo build --locked --release -p got-cli
+
+      - name: Package release binaries
+        shell: bash
+        run: |
+          archive="git-of-theseus-${{ github.ref_name }}-${{ matrix.target }}"
+          mkdir "$archive"
+          for binary in git-of-theseus-analyze git-of-theseus-line-plot git-of-theseus-stack-plot git-of-theseus-survival-plot; do
+            cp "target/release/${binary}${{ matrix.executable_suffix }}" "$archive/"
+          done
+          mkdir dist
+          tar -czf "dist/${archive}.tar.gz" "$archive"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v3.0.3
+        with:
+          files: dist/*.tar.gz
+          fail_on_unmatched_files: true
+          generate_release_notes: true

@@ -10,6 +10,20 @@ Here's an example running it on this very repository — code broken down by the
 
 ## Installation
 
+### Pre-built binaries
+
+Download the archive for your platform from [GitHub Releases](https://github.com/eapolinario/git-of-theseus/releases), then extract its contents and add them to your `PATH`. For example, on Linux:
+
+```shell
+curl -LO https://github.com/eapolinario/git-of-theseus/releases/download/<tag>/git-of-theseus-<tag>-x86_64-unknown-linux-gnu.tar.gz
+tar -xzf git-of-theseus-<tag>-x86_64-unknown-linux-gnu.tar.gz
+install -m 755 git-of-theseus-<tag>-x86_64-unknown-linux-gnu/git-of-theseus-* ~/.local/bin/
+```
+
+Releases provide archives for Linux x86_64, macOS x86_64 and Apple Silicon, and Windows x86_64. On Windows, extract the `.tar.gz` archive and add the directory containing the `.exe` files to your `PATH`.
+
+### Build from source
+
 Clone the repository and build with Cargo:
 
 ```shell
@@ -152,7 +166,7 @@ The Rust port is being delivered incrementally. Tracked work:
 
 **Part 4 — Cutover**
 - [x] Rename `git-of-theseus-analyze-rs` → `git-of-theseus-analyze` now that the Rust CLI ships under the original command names
-- [ ] Ship pre-built binaries (release workflow + GitHub Releases)
+- [x] Ship pre-built binaries (release workflow + GitHub Releases)
 - [x] Update `Dockerfile`, `flake.nix`, `Justfile`, and the existing CI matrix accordingly
 - [x] Remove the Python `analyze.py` (and the rest of the Python package)
 
