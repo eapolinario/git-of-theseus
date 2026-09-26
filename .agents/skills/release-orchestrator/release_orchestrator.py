@@ -15,11 +15,12 @@ import sys
 import tempfile
 import textwrap
 import time
+import uuid
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SESSION_ROOT = Path(os.environ.get("COPILOT_SESSION_STATE", "/tmp"))
+SESSION_ROOT = os.environ.get("COPILOT_SESSION_STATE")
 RELEASE_PR_PREFIX = "chore: prepare release v"
 
 
@@ -72,6 +73,9 @@ def find_release_pr(prs: list[dict[str, object]], version: str | None = None) ->
             if expected_title
             else str(pr.get("title", "")).lower().startswith(RELEASE_PR_PREFIX)
         )
+        and str(pr.get("headRefName", "")).startswith("release-version-")
+        and pr.get("baseRefName") == "master"
+        and pr.get("isCrossRepository") is False
     ]
     if not matching:
         return None
@@ -79,29 +83,15 @@ def find_release_pr(prs: list[dict[str, object]], version: str | None = None) ->
 
 
 def open_release_pr(version: str | None = None) -> str:
-    result = run(["gh", "pr", "list", "--state", "open", "--json", "number,title"], capture=True)
+    pr_fields = "number,title,headRefName,baseRefName,isCrossRepository"
+    result = run(["gh", "pr", "list", "--state", "open", "--json", pr_fields], capture=True)
     pr_number = find_release_pr(json.loads(result.stdout or "[]"), version)
     if pr_number is not None:
         return pr_number
 
     print("Opening the version-bump PR via the repo workflow.")
-    result = run(
-        [
-            "gh",
-            "run",
-            "list",
-            "--workflow",
-            "release-plz.yml",
-            "--event",
-            "workflow_dispatch",
-            "--limit",
-            "100",
-            "--json",
-            "databaseId",
-        ]
-    )
-    previous_run_ids = {workflow_run["databaseId"] for workflow_run in json.loads(result.stdout or "[]")}
-    run(["gh", "workflow", "run", "release-plz.yml"])
+    correlation_id = str(uuid.uuid4())
+    run(["gh", "workflow", "run", "release-plz.yml", "-f", f"correlation_id={correlation_id}"])
     deadline = time.time() + 5 * 60
     run_id = None
     while time.time() < deadline:
@@ -117,23 +107,21 @@ def open_release_pr(version: str | None = None) -> str:
                 "--limit",
                 "100",
                 "--json",
-                "databaseId",
+                "databaseId,displayTitle",
             ]
         )
-        new_runs = [
-            workflow_run
-            for workflow_run in json.loads(result.stdout or "[]")
-            if workflow_run["databaseId"] not in previous_run_ids
+        matching_runs = [
+            workflow_run for workflow_run in json.loads(result.stdout or "[]") if correlation_id in workflow_run["displayTitle"]
         ]
-        if new_runs:
-            run_id = str(new_runs[0]["databaseId"])
+        if matching_runs:
+            run_id = str(matching_runs[0]["databaseId"])
             break
         time.sleep(5)
     if run_id is None:
         raise SystemExit("Timed out waiting for the release-plz workflow run to start.")
     run(["gh", "run", "watch", run_id, "--exit-status"])
 
-    result = run(["gh", "pr", "list", "--state", "open", "--json", "number,title"], capture=True)
+    result = run(["gh", "pr", "list", "--state", "open", "--json", pr_fields], capture=True)
     prs = json.loads(result.stdout or "[]")
     pr_number = find_release_pr(prs, version)
     if pr_number is None:
@@ -170,14 +158,22 @@ def maybe_update_version_pr(version: str | None) -> str:
     if not version.startswith("v"):
         version = f"v{version}"
 
-    result = run(["gh", "pr", "list", "--state", "open", "--json", "number,title"], capture=True)
+    result = run(
+        ["gh", "pr", "list", "--state", "open", "--json", "number,title,headRefName,baseRefName,isCrossRepository"],
+        capture=True,
+    )
     prs = json.loads(result.stdout or "[]")
     pr_number = find_release_pr(prs, version[1:])
     if pr_number is None:
         pr_number = open_release_pr(version[1:])
     wait_for_checks(pr_number)
     merge_pr(pr_number)
-    return version[1:]
+    run(["git", "checkout", "master"])
+    run(["git", "pull", "--ff-only", "origin", "master"])
+    merged_version = workspace_version()
+    if merged_version != version[1:]:
+        raise SystemExit(f"Merged workspace version {merged_version} does not match requested version {version[1:]}.")
+    return merged_version
 
 
 def get_release_tag(version: str) -> str:
@@ -234,7 +230,7 @@ def wait_for_release(tag_name: str, timeout_minutes: int = 90) -> None:
 
 def generate_winget_manifests(version: str) -> None:
     tag = get_release_tag(version)
-    temp_dir = Path(tempfile.mkdtemp(prefix="winget-pkgs-", dir=str(SESSION_ROOT)))
+    temp_dir = Path(tempfile.mkdtemp(prefix="winget-pkgs-", dir=SESSION_ROOT))
     print(f"Checking out your winget-pkgs fork into {temp_dir}.")
     run(["git", "clone", "https://github.com/eapolinario/winget-pkgs.git", str(temp_dir)], check=True)
     manifest_dir = temp_dir / "manifests" / "e" / "Eapolinario" / "GitOfTheseus" / version
@@ -342,7 +338,7 @@ def generate_winget_manifests(version: str) -> None:
         "--base",
         "master",
         "--head",
-        f"eapolinario:eapolinario-git-of-theseus-v{version}"
+        f"eapolinario:eapolinario-git-of-theseus-v{version}",
         "--title",
         f"Update Git of Theseus to version {version}",
         "--body",
