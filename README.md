@@ -136,11 +136,16 @@ line and stack plot commands support the same optional `--events` manifest.
 The Rust CLI is now the only shipped implementation; the Python package has
 been removed. A handful of features from the former Python CLI are not yet
 implemented in Rust and are documented below as a breaking change rather than
-a gap versus a still-available reference implementation: mailmap rewriting
-via `git check-mailmap`, the `--opt` commit-graph flag, and interactive
-SIGINT pause/resume. Invocations that relied on those flags will now fail;
-see the deferred-features checklist below for tracking. `--merge` is the
-reverse case: a Rust-only addition that had no Python equivalent.
+a gap versus a still-available reference implementation: the `--opt`
+commit-graph flag and interactive SIGINT pause/resume. Invocations that
+relied on those flags will now fail; see the deferred-features checklist
+below for tracking. `--merge` is the reverse case: a Rust-only addition that
+had no Python equivalent.
+
+Mailmap author/email rewriting is implemented: `git-of-theseus-analyze`
+resolves each commit's author identity through the repository's `.mailmap`
+(via `git2::Repository::mailmap` / `Mailmap::resolve_signature`), mirroring
+the Python `get_mailmap_author_name_email` helper.
 
 ##### Rust port — TODO
 
@@ -158,7 +163,7 @@ The Rust port is being delivered incrementally. Tracked work:
 - [x] Unit + end-to-end integration tests; `fmt --check`, `clippy -D warnings`, build/test in CI; CI cross-checks Rust JSON via the Python plot scripts
 
 **Part 1.x — fill in deferred Python features**
-- [ ] `mailmap` author/email rewriting (the Python `get_mailmap_author_name_email` helper)
+- [x] `mailmap` author/email rewriting (the Python `get_mailmap_author_name_email` helper)
 - [ ] `--opt` flag: write `git commit-graph` for faster history walking on large repos
 - [ ] Interactive SIGINT pause / process-count adjustment (the `handler` function in the Python CLI)
 - [ ] Warn-and-fall-back behaviour exactly matching Python when `--branch` does not exist (currently emits a one-line warning to stderr; Python uses `warnings.warn` and special-cases detached HEAD)
