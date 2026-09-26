@@ -88,7 +88,13 @@ fn opt_writes_a_commit_graph() {
     fs::create_dir(&repo).unwrap();
 
     let result = Command::new("git")
-        .args(["init", "-q", "-b", "main"])
+        .args(["init", "-q"])
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    assert!(result.status.success());
+    let result = Command::new("git")
+        .args(["checkout", "-q", "-b", "main"])
         .current_dir(&repo)
         .output()
         .unwrap();

@@ -11,7 +11,6 @@
 //!
 //! Features intentionally deferred to follow-up PRs:
 //! - `mailmap` author rewriting (`get_mailmap_author_name_email` in Python)
-//! - `--opt` git-commit-graph generation
 //! - Interactive SIGINT pause / process-count adjustment
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};

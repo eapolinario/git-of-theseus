@@ -442,9 +442,8 @@ git commit-graph write --reachable
 # Subsequent operations use graph (much faster)
 ```
 
-**Benefit:** Faster commit walking in step 2 ("Backtracking the master branch").
-
-**Estimated speedup:** 1.1–2x (small relative to blame time)
+**Benefit:** Faster commit walking in Git's own CLI and in tools whose
+history walk reads the commit-graph file.
 
 **Opt in with git-of-theseus:**
 
@@ -456,10 +455,11 @@ git-of-theseus-analyze --opt --outdir output repo
 each repository supplied). It requires Git 2.18+ and writes only commit-graph
 metadata under `.git`; it never changes commits or the working tree.
 
-**Expected results:** On repositories with large, deep histories, commit
-walking itself is typically 1.1–2x faster. Since blame dominates this tool's
-runtime, measure the full analysis with and without `--opt` using
-`--measure-time`; total runtime improvement will usually be smaller.
+**Note:** This tool's history walk (step 2, "Backtracking the master branch")
+uses `git2`/`libgit2`'s `revwalk`, which does not currently read the
+commit-graph file. As a result, `--opt` does not speed up this tool's own
+traversal; it may still be useful if other Git tooling operating on the same
+repository benefits from the commit-graph.
 
 ---
 
