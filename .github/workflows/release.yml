@@ -98,10 +98,10 @@ jobs:
           @"
           PackageIdentifier: Eapolinario.GitOfTheseus
           PackageVersion: $version
-          InstallerType: zip
-          NestedInstallerType: portable
           Installers:
             - Architecture: x64
+              InstallerType: zip
+              NestedInstallerType: portable
               InstallerUrl: $url
               InstallerSha256: $sha256
               NestedInstallerFiles:

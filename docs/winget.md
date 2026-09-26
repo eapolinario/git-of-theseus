@@ -28,11 +28,11 @@ alias, so all four commands are added to `PATH`.
    submission must retain the generated URL, version, SHA-256, and all four
    `NestedInstallerFiles` aliases; the community repository's validation
    downloads the release asset and verifies those values.
-4. After that pull request merges, verify a fresh installation and an upgrade
-   on Windows x64:
+4. After that pull request merges, verify an upgrade on Windows x64. Install
+   the previous published version first, then upgrade to the new release:
 
    ```powershell
-   winget install --id Eapolinario.GitOfTheseus --exact
+   winget install --id Eapolinario.GitOfTheseus --version <previous-version> --exact
    git-of-theseus-analyze --help
    git-of-theseus-line-plot --help
    git-of-theseus-stack-plot --help
@@ -41,5 +41,4 @@ alias, so all four commands are added to `PATH`.
    winget upgrade --id Eapolinario.GitOfTheseus --exact
    ```
 
-   Run the four `--help` commands again after the upgrade. If the package is
-   already installed, use `winget upgrade` directly instead of `install`.
+   Run the four `--help` commands again after the upgrade.
