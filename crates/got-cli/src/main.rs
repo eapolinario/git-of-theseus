@@ -68,9 +68,7 @@ struct Cli {
     #[arg(long, default_value_t = false)]
     measure_time: bool,
 
-    /// Generate a git commit-graph before analysis (writes `.git` metadata
-    /// only; this tool's history walk does not currently read the
-    /// commit-graph, so it does not speed up this tool's own traversal).
+    /// Generate a git commit-graph before analysis to speed large-history traversal.
     #[arg(long, default_value_t = false)]
     opt: bool,
 
