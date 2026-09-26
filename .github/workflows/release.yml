@@ -82,7 +82,7 @@ jobs:
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
-          $version = $tag.TrimStart("v")
+          $version = $tag -replace "^v", ""
           $archive = "git-of-theseus-$tag-${{ matrix.target }}"
           $url = "https://github.com/${{ github.repository }}/releases/download/$tag/$archive.zip"
           $sha256 = (Get-FileHash "dist/$archive.zip" -Algorithm SHA256).Hash
@@ -161,6 +161,7 @@ jobs:
       - uses: softprops/action-gh-release@v3.0.3
         with:
           files: |
+            dist/*.tar.gz
             dist/*.zip
             dist/**/*.yaml
           fail_on_unmatched_files: true

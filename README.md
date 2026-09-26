@@ -41,8 +41,7 @@ winget upgrade --id Eapolinario.GitOfTheseus --exact
 
 The portable package places `git-of-theseus-analyze`,
 `git-of-theseus-line-plot`, `git-of-theseus-stack-plot`, and
-`git-of-theseus-survival-plot` on `PATH`. Run `winget list --id
-Eapolinario.GitOfTheseus --exact` to confirm the installed version.
+`git-of-theseus-survival-plot` on `PATH`. Run `winget list --id Eapolinario.GitOfTheseus --exact` to confirm the installed version.
 
 Maintainers: every tagged release generates and validates the versioned WinGet
 manifests alongside the release assets. Follow the submission procedure in
