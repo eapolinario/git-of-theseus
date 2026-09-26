@@ -12,7 +12,7 @@ Here's an example running it on this very repository — code broken down by the
 
 ### Pre-built binaries
 
-Download the archive for your platform from [GitHub Releases](https://github.com/eapolinario/git-of-theseus/releases), then extract its contents and add them to your `PATH`. For example, on Linux:
+Download the archive for your platform from [GitHub Releases](https://github.com/eapolinario/git-of-theseus/releases), then extract its contents and add them to your `PATH`. Replace `<tag>` below with the release tag, including its leading `v` (for example, `v0.4.0`). On Linux:
 
 ```shell
 curl -LO https://github.com/eapolinario/git-of-theseus/releases/download/<tag>/git-of-theseus-<tag>-x86_64-unknown-linux-gnu.tar.gz
