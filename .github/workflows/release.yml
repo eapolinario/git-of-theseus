@@ -77,10 +77,73 @@ jobs:
           New-Item -ItemType Directory dist
           Compress-Archive -Path $archive -DestinationPath "dist/$archive.zip"
 
+      - name: Generate and validate WinGet manifests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag -replace "^v", ""
+          $archive = "git-of-theseus-$tag-${{ matrix.target }}"
+          $url = "https://github.com/${{ github.repository }}/releases/download/$tag/$archive.zip"
+          $sha256 = (Get-FileHash "dist/$archive.zip" -Algorithm SHA256).Hash
+          $manifestDir = "winget-manifests/e/Eapolinario/GitOfTheseus/$version"
+          New-Item -ItemType Directory -Force $manifestDir
+          @"
+          PackageIdentifier: Eapolinario.GitOfTheseus
+          PackageVersion: $version
+          DefaultLocale: en-US
+          ManifestType: version
+          ManifestVersion: 1.10.0
+          "@ | Set-Content "$manifestDir/Eapolinario.GitOfTheseus.yaml"
+          @"
+          PackageIdentifier: Eapolinario.GitOfTheseus
+          PackageVersion: $version
+          Installers:
+            - Architecture: x64
+              InstallerType: zip
+              NestedInstallerType: portable
+              InstallerUrl: $url
+              InstallerSha256: $sha256
+              NestedInstallerFiles:
+                - RelativeFilePath: $archive/git-of-theseus-analyze.exe
+                  PortableCommandAlias: git-of-theseus-analyze
+                - RelativeFilePath: $archive/git-of-theseus-line-plot.exe
+                  PortableCommandAlias: git-of-theseus-line-plot
+                - RelativeFilePath: $archive/git-of-theseus-stack-plot.exe
+                  PortableCommandAlias: git-of-theseus-stack-plot
+                - RelativeFilePath: $archive/git-of-theseus-survival-plot.exe
+                  PortableCommandAlias: git-of-theseus-survival-plot
+          ManifestType: installer
+          ManifestVersion: 1.10.0
+          "@ | Set-Content "$manifestDir/Eapolinario.GitOfTheseus.installer.yaml"
+          @"
+          PackageIdentifier: Eapolinario.GitOfTheseus
+          PackageVersion: $version
+          PackageLocale: en-US
+          Publisher: eapolinario
+          PublisherUrl: https://github.com/eapolinario
+          PublisherSupportUrl: https://github.com/eapolinario/git-of-theseus/issues
+          PackageName: Git of Theseus
+          PackageUrl: https://github.com/eapolinario/git-of-theseus
+          License: Apache-2.0
+          LicenseUrl: https://github.com/eapolinario/git-of-theseus/blob/$tag/LICENSE
+          ShortDescription: Analyze how a Git repository grows over time.
+          ManifestType: defaultLocale
+          ManifestVersion: 1.10.0
+          "@ | Set-Content "$manifestDir/Eapolinario.GitOfTheseus.locale.en-US.yaml"
+          winget validate --manifest $manifestDir
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
           path: dist/*.${{ matrix.archive_extension }}
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: winget-manifests
+          path: winget-manifests
           if-no-files-found: error
 
   release:
@@ -97,7 +160,10 @@ jobs:
 
       - uses: softprops/action-gh-release@v3.0.3
         with:
-          files: dist/*
+          files: |
+            dist/**/*.tar.gz
+            dist/**/*.zip
+            dist/**/*.yaml
           fail_on_unmatched_files: true
           generate_release_notes: true
 

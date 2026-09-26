@@ -28,6 +28,26 @@ install -m 755 \
 
 Ensure `~/.local/bin` is on your `PATH`. Releases provide archives for Linux x86_64, macOS x86_64 and Apple Silicon, and Windows x86_64. On Windows, extract the `.zip` archive and add the directory containing the `.exe` files to your `PATH`.
 
+### Windows with WinGet
+
+After the package manifest for a release has been accepted into the [Windows
+Package Manager Community Repository](https://github.com/microsoft/winget-pkgs),
+install or upgrade all four commands without a Rust toolchain:
+
+```powershell
+winget install --id Eapolinario.GitOfTheseus --exact
+winget upgrade --id Eapolinario.GitOfTheseus --exact
+```
+
+The portable package places `git-of-theseus-analyze`,
+`git-of-theseus-line-plot`, `git-of-theseus-stack-plot`, and
+`git-of-theseus-survival-plot` on `PATH`. Run `winget list --id Eapolinario.GitOfTheseus --exact` to confirm the installed version.
+
+Maintainers: every tagged release generates and validates the versioned WinGet
+manifests alongside the release assets. Follow the submission procedure in
+[the WinGet release guide](docs/winget.md) to submit them to the community
+repository.
+
 The Linux binaries link against system libraries, so a minimal installation may need them installed first (fontconfig and FreeType for plotting, OpenSSL for HTTPS support in libgit2):
 
 ```shell
