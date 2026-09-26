@@ -291,7 +291,7 @@ def generate_winget_manifests(version: str) -> None:
         "--base",
         "master",
         "--head",
-        f"eapolinario:eapolinario-git-of-theseus-v{version}",
+        f"eapolinario:eapolinario-git-of-theseus-v{version}"
         "--title",
         f"Update Git of Theseus to version {version}",
         "--body",
