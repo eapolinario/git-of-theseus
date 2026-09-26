@@ -37,6 +37,24 @@ sudo apt-get install -y libfontconfig1 libfreetype6 libssl3
 sudo dnf install -y fontconfig freetype openssl-libs
 ```
 
+### Homebrew (macOS)
+
+On macOS (Intel or Apple Silicon), install via Homebrew, tapping this repository directly since it isn't published to homebrew-core:
+
+```shell
+brew tap eapolinario/git-of-theseus https://github.com/eapolinario/git-of-theseus
+brew install eapolinario/git-of-theseus/git-of-theseus
+```
+
+This installs all four executables: `git-of-theseus-analyze`, `git-of-theseus-line-plot`, `git-of-theseus-stack-plot`, and `git-of-theseus-survival-plot`. To upgrade to the latest release:
+
+```shell
+brew update
+brew upgrade eapolinario/git-of-theseus/git-of-theseus
+```
+
+The formula ([`Formula/git-of-theseus.rb`](Formula/git-of-theseus.rb)) downloads the same prebuilt macOS binaries published to [GitHub Releases](https://github.com/eapolinario/git-of-theseus/releases). Its version, download URLs, and checksums are updated automatically by the release workflow (`.github/workflows/release.yml`) whenever a new `vX.Y.Z` tag is pushed, so `brew upgrade` always matches the latest tagged release.
+
 ### Build from source
 
 Clone the repository and build with Cargo:

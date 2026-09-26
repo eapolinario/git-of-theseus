@@ -100,3 +100,61 @@ jobs:
           files: dist/*
           fail_on_unmatched_files: true
           generate_release_notes: true
+
+  update-homebrew-formula:
+    name: Update Homebrew formula
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - uses: actions/download-artifact@v4.1.7
+        with:
+          path: dist
+          pattern: "*-apple-darwin"
+          merge-multiple: true
+
+      - name: Update Formula/git-of-theseus.rb
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          arm64_sha=$(sha256sum "dist/git-of-theseus-${TAG}-aarch64-apple-darwin.tar.gz" | cut -d' ' -f1)
+          x86_64_sha=$(sha256sum "dist/git-of-theseus-${TAG}-x86_64-apple-darwin.tar.gz" | cut -d' ' -f1)
+          python3 - "$version" "$arm64_sha" "$x86_64_sha" <<'EOF'
+          import re
+          import sys
+
+          version, arm_sha, x86_sha = sys.argv[1:4]
+          path = "Formula/git-of-theseus.rb"
+          text = open(path).read()
+
+          text = re.sub(r'version "[^"]*"', f'version "{version}"', text, count=1)
+
+          def replace_block(text, block_name, sha):
+              pattern = re.compile(
+                  rf'({re.escape(block_name)} do.*?sha256 ")[^"]*(".*?end)', re.DOTALL
+              )
+              return pattern.sub(lambda m: m.group(1) + sha + m.group(2), text, count=1)
+
+          text = replace_block(text, "on_arm", arm_sha)
+          text = replace_block(text, "on_intel", x86_sha)
+
+          open(path, "w").write(text)
+          EOF
+
+      - name: Commit and push formula update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/git-of-theseus.rb
+          if git diff --cached --quiet; then
+            echo "No formula changes to commit"
+          else
+            git commit -m "Update Homebrew formula for ${{ github.ref_name }}"
+            git push origin HEAD:master
+          fi
