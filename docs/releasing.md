@@ -92,7 +92,9 @@ Release builds must not rewrite versions. The version must already be committed
 before tagging.
 
 Any tag-driven release workflow should build from the tagged commit and verify
-that the tag name matches the committed workspace version exactly:
+that the tag name matches the committed workspace version exactly. Because all
+crates currently inherit the workspace version, this example reads `got-core` as
+a representative workspace member:
 
 ```shell
 test "v$(cargo metadata --no-deps --format-version 1 \
