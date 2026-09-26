@@ -37,9 +37,9 @@ sudo apt-get install -y libfontconfig1 libfreetype6 libssl3
 sudo dnf install -y fontconfig freetype openssl-libs
 ```
 
-### Homebrew (macOS)
+### Homebrew (macOS releases)
 
-On macOS (Intel or Apple Silicon), install via Homebrew, tapping this repository directly since it isn't published to homebrew-core:
+After a tagged release has published the macOS archives and generated `Formula/git-of-theseus.rb`, install on Intel or Apple Silicon by tapping this repository directly:
 
 ```shell
 brew tap eapolinario/git-of-theseus https://github.com/eapolinario/git-of-theseus
@@ -53,7 +53,7 @@ brew update
 brew upgrade eapolinario/git-of-theseus/git-of-theseus
 ```
 
-The formula ([`Formula/git-of-theseus.rb`](Formula/git-of-theseus.rb)) downloads the same prebuilt macOS binaries published to [GitHub Releases](https://github.com/eapolinario/git-of-theseus/releases). Its version, download URLs, and checksums are updated automatically by the release workflow (`.github/workflows/release.yml`) whenever a new `vX.Y.Z` tag is pushed, so `brew upgrade` always matches the latest tagged release.
+The generated formula downloads the same prebuilt macOS binaries published to [GitHub Releases](https://github.com/eapolinario/git-of-theseus/releases). Its version, download URLs, and checksums are updated automatically by the release workflow (`.github/workflows/release.yml`) whenever a new `vX.Y.Z` tag is pushed, so `brew upgrade` always matches the latest tagged release.
 
 ### Build from source
 
