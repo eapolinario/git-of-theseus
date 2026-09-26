@@ -12,6 +12,8 @@ jobs:
   build:
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+    env:
+      BINARIES: git-of-theseus-analyze git-of-theseus-line-plot git-of-theseus-stack-plot git-of-theseus-survival-plot
     strategy:
       fail-fast: false
       matrix:
@@ -52,7 +54,7 @@ jobs:
         run: |
           archive="git-of-theseus-${{ github.ref_name }}-${{ matrix.target }}"
           mkdir "$archive"
-          for binary in git-of-theseus-analyze git-of-theseus-line-plot git-of-theseus-stack-plot git-of-theseus-survival-plot; do
+          for binary in $BINARIES; do
             cp "target/${{ matrix.target }}/release/${binary}${{ matrix.executable_suffix }}" "$archive/"
           done
           mkdir dist
@@ -64,7 +66,7 @@ jobs:
         run: |
           $archive = "git-of-theseus-${{ github.ref_name }}-${{ matrix.target }}"
           New-Item -ItemType Directory $archive
-          $binaries = "git-of-theseus-analyze", "git-of-theseus-line-plot", "git-of-theseus-stack-plot", "git-of-theseus-survival-plot"
+          $binaries = $env:BINARIES.Split(" ")
           foreach ($binary in $binaries) {
             Copy-Item "target/${{ matrix.target }}/release/$binary${{ matrix.executable_suffix }}" $archive
           }
