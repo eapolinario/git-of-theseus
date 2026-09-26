@@ -732,10 +732,7 @@ fn mailmap_author_name_email(
     quiet: bool,
 ) -> (String, String) {
     match mailmap.resolve_signature(sig) {
-        Ok(resolved) => (
-            resolved.name().unwrap_or("").to_string(),
-            resolved.email().unwrap_or("").to_string(),
-        ),
+        Ok(resolved) => mailmap_identity_or_original(sig, resolved.name(), resolved.email()),
         Err(e) => {
             if !quiet {
                 eprintln!(
@@ -744,12 +741,24 @@ fn mailmap_author_name_email(
                     sig.email().unwrap_or("")
                 );
             }
-            (
-                sig.name().unwrap_or("").to_string(),
-                sig.email().unwrap_or("").to_string(),
-            )
+            mailmap_identity_or_original(sig, None, None)
         }
     }
+}
+
+fn mailmap_identity_or_original(
+    sig: &Signature<'_>,
+    resolved_name: Option<&str>,
+    resolved_email: Option<&str>,
+) -> (String, String) {
+    (
+        resolved_name
+            .unwrap_or_else(|| sig.name().unwrap_or(""))
+            .to_string(),
+        resolved_email
+            .unwrap_or_else(|| sig.email().unwrap_or(""))
+            .to_string(),
+    )
 }
 
 fn resolve_branch(repo: &Repository, branch: &str, quiet: bool) -> Result<Oid> {
@@ -993,6 +1002,27 @@ mod tests {
         assert_eq!(extract_domain("alice@example.com"), "example.com");
         assert_eq!(extract_domain("noemail"), "noemail");
         assert_eq!(extract_domain(""), "");
+    }
+
+    #[test]
+    fn mailmap_fallback_preserves_original_fields_independently() {
+        let sig = Signature::now("Alice", "alice@example.com").unwrap();
+
+        assert_eq!(
+            mailmap_identity_or_original(&sig, None, Some("alice@new.example.com")),
+            ("Alice".to_string(), "alice@new.example.com".to_string())
+        );
+        assert_eq!(
+            mailmap_identity_or_original(&sig, Some("Alice Wonderland"), None),
+            (
+                "Alice Wonderland".to_string(),
+                "alice@example.com".to_string()
+            )
+        );
+        assert_eq!(
+            mailmap_identity_or_original(&sig, None, None),
+            ("Alice".to_string(), "alice@example.com".to_string())
+        );
     }
 
     /// Verifies `merge_results`' core behaviors on hand-built results, where
