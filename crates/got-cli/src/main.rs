@@ -6,8 +6,9 @@
 //! `-line-plot`, `-survival-plot`) consume unchanged.
 
 use std::path::PathBuf;
+use std::process::Command;
 
-use anyhow::Result;
+use anyhow::{bail, Context, Result};
 use clap::Parser;
 use got_core::{analyze_many, AnalyzeOptions, DEFAULT_INTERVAL_SECS};
 
@@ -67,6 +68,10 @@ struct Cli {
     #[arg(long, default_value_t = false)]
     measure_time: bool,
 
+    /// Generate a git commit-graph before analysis to speed large-history traversal.
+    #[arg(long, default_value_t = false)]
+    opt: bool,
+
     /// Path(s) to the git repository/repositories to analyze. When more
     /// than one is given, each is analyzed independently and its JSON
     /// output is written to a subdirectory of `--outdir` named after the
@@ -83,6 +88,9 @@ fn default_procs() -> usize {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    if cli.opt {
+        write_commit_graphs(&cli.repo_dir)?;
+    }
     let options = AnalyzeOptions {
         repo_dir: PathBuf::new(), // overridden per-repository by analyze_many
         branch: cli.branch,
@@ -103,6 +111,24 @@ fn main() -> Result<()> {
 
     if cli.measure_time {
         print_timing_stats(&options.timing);
+    }
+    Ok(())
+}
+
+fn write_commit_graphs(repo_dirs: &[PathBuf]) -> Result<()> {
+    for repo_dir in repo_dirs {
+        let output = Command::new("git")
+            .args(["commit-graph", "write", "--reachable"])
+            .current_dir(repo_dir)
+            .output()
+            .with_context(|| format!("writing commit graph for {}", repo_dir.display()))?;
+        if !output.status.success() {
+            bail!(
+                "writing commit graph for {}: {}",
+                repo_dir.display(),
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
     }
     Ok(())
 }

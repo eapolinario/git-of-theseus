@@ -43,7 +43,13 @@ This writes several JSON files to `<output-dir>`:
 | `domains.json` | Lines of code grouped by author email domain |
 | `survival.json` | Data for survival curve estimation |
 
-Analysis can take a while on large repos. Run `git-of-theseus-analyze --help` for all options including `--interval`, `--branch`, `--ignore`, and `--only`.
+Analysis can take a while on large repos. Run `git-of-theseus-analyze --help` for all options including `--interval`, `--branch`, `--ignore`, and `--only`. For repositories with long histories, opt in to write a commit graph before analysis:
+
+```shell
+git-of-theseus-analyze --opt <path-to-repo> --outdir <output-dir>
+```
+
+This runs `git commit-graph write --reachable` for each requested repository. It requires Git 2.18+ and changes only repository commit-graph metadata; it can make history traversal about 1.1–2x faster, though end-to-end analysis gains are usually smaller because blame dominates runtime.
 
 ### Analyzing multiple repositories
 
@@ -108,8 +114,8 @@ The Rust CLI is now the only shipped implementation; the Python package has
 been removed. A handful of features from the former Python CLI are not yet
 implemented in Rust and are documented below as a breaking change rather than
 a gap versus a still-available reference implementation: mailmap rewriting
-via `git check-mailmap`, the `--opt` commit-graph flag, and interactive
-SIGINT pause/resume. Invocations that relied on those flags will now fail;
+via `git check-mailmap` and interactive SIGINT pause/resume. Invocations that
+relied on those flags will now fail;
 see the deferred-features checklist below for tracking. `--merge` is the
 reverse case: a Rust-only addition that had no Python equivalent.
 
@@ -130,7 +136,7 @@ The Rust port is being delivered incrementally. Tracked work:
 
 **Part 1.x — fill in deferred Python features**
 - [ ] `mailmap` author/email rewriting (the Python `get_mailmap_author_name_email` helper)
-- [ ] `--opt` flag: write `git commit-graph` for faster history walking on large repos
+- [x] `--opt` flag: write `git commit-graph` for faster history walking on large repos
 - [ ] Interactive SIGINT pause / process-count adjustment (the `handler` function in the Python CLI)
 - [ ] Warn-and-fall-back behaviour exactly matching Python when `--branch` does not exist (currently emits a one-line warning to stderr; Python uses `warnings.warn` and special-cases detached HEAD)
 - [ ] Investigate cohort-bucket distribution differences vs Python (libgit2 vs `git blame` rename detection — totals already match exactly)

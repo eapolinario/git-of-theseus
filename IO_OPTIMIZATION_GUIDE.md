@@ -446,7 +446,20 @@ git commit-graph write --reachable
 
 **Estimated speedup:** 1.1–2x (small relative to blame time)
 
-**Note:** Currently deferred in code comments; could be implemented as `--opt` flag.
+**Opt in with git-of-theseus:**
+
+```bash
+git-of-theseus-analyze --opt --outdir output repo
+```
+
+`--opt` runs `git commit-graph write --reachable` before analysis (once for
+each repository supplied). It requires Git 2.18+ and writes only commit-graph
+metadata under `.git`; it never changes commits or the working tree.
+
+**Expected results:** On repositories with large, deep histories, commit
+walking itself is typically 1.1–2x faster. Since blame dominates this tool's
+runtime, measure the full analysis with and without `--opt` using
+`--measure-time`; total runtime improvement will usually be smaller.
 
 ---
 
