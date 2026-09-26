@@ -65,7 +65,10 @@ the Rust library crates:
 On pull requests it compares against the PR base branch with
 `--baseline-rev origin/<base-branch>`, so the check works before the crates are
 published to any registry. The workflow can also be run manually with a custom
-Git revision baseline.
+Git revision baseline. Manual `baseline_ref` values may be commits, tags, full
+refs such as `origin/main`, or branch names; branch names that do not resolve as
+local refs are retried as `origin/<baseline_ref>`. If a manual run does not set
+`baseline_ref`, it falls back to `origin/<default-branch>`.
 
 Once the library crates are published and registry baselines are preferred, run
 `cargo semver-checks --package <crate> --baseline-version <version>` locally or
