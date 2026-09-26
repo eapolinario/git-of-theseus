@@ -161,8 +161,8 @@ jobs:
       - uses: softprops/action-gh-release@v3.0.3
         with:
           files: |
-            dist/*.tar.gz
-            dist/*.zip
+            dist/**/*.tar.gz
+            dist/**/*.zip
             dist/**/*.yaml
           fail_on_unmatched_files: true
           generate_release_notes: true
