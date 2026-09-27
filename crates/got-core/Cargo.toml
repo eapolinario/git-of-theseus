@@ -13,6 +13,7 @@ chrono.workspace = true
 git2.workspace = true
 globset.workspace = true
 indicatif.workspace = true
+libgit2-sys.workspace = true
 rayon.workspace = true
 serde.workspace = true
 serde_json.workspace = true

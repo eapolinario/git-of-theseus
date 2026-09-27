@@ -15,6 +15,7 @@
 pub mod analyze;
 pub mod cohort;
 pub mod filetypes;
+pub mod libgit2_opts;
 pub mod output;
 pub mod path_filter;
 
