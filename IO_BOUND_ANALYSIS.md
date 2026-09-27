@@ -1,7 +1,7 @@
-# Evidence: git-of-theseus-analyze is I/O-Bound, Not Compute-Bound
+# Analysis: Blame Is the Primary Performance Target
 
 ## Executive Summary
-The analysis binary is fundamentally **I/O-bound**, not compute-bound. Heavy git operations (blame, tree walks, commit history traversal) dominate execution time, while actual computation (line counting, histogram aggregation) is negligible by comparison.
+Per-file blame reconstructs file history and is the primary expensive operation by code-path inspection. Historical `--measure-time` reports summed blame worker-time, not elapsed time; their percentages cannot prove that the full program is I/O-bound or estimate elapsed-time gains. Use `Analysis wall time` from the corrected output for performance comparisons.
 
 ---
 

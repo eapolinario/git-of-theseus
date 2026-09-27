@@ -193,10 +193,10 @@ cargo build --release
 ### Output Interpretation
 ```
 === Timing Statistics ===
-Blame call worker-time:    2193.7ms
-Average blame call:          16.130ms
-Analysis wall time:        2197.8ms
-Files blamed:               136
+Blame call worker-time:    <sum across workers>
+Average blame call:        <worker-time / files blamed>
+Analysis wall time:        <measured elapsed time>
+Files blamed:              <count>
 Note: worker-time sums concurrent tasks and is not wall time.
 ```
 
@@ -228,7 +228,7 @@ START
 ### Before Optimization
 ```bash
 git-of-theseus-analyze --measure-time --outdir /tmp/before repo
-# Expected: ~2000ms (99.6% I/O)
+# Record "Analysis wall time" as the baseline
 ```
 
 ### After Phase 1

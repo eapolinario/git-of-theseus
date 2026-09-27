@@ -1,4 +1,11 @@
-# Timing Measurements: Proof That git-of-theseus-analyze is I/O-Bound
+# Timing Measurements: Blame Profiling and Wall-Time Benchmarks
+
+> **Caveat:** The historical runs below used cumulative blame/post-blame worker
+> timers but mixed them with elapsed stage timers. Their percentages and
+> reported “total” are therefore not valid wall-time breakdowns and do not
+> establish a speedup. Current `--measure-time` output distinguishes aggregate
+> worker-time from analysis wall time; use repeated wall-time runs with the
+> same repository, revision, options, and cache state to compare changes.
 
 ## Methodology
 
@@ -223,7 +230,7 @@ Actual: 7.4x slower
 **Optimization opportunities (in priority order):**
 1. **Cache blame results** — Each file blamed multiple times (once per sampled commit); caching could provide 50–200x speedup
 2. **Use git object cache optimizations** — Improve git's internal caching
-3. **Batch blame operations** — Request multiple files in one git operation (if supported by libgit2)
+3. **Batch blame operations** — Not supported by the current libgit2 API
 4. **Pre-compute shallow blames** — Use faster algorithms for early samples
 5. ~~Parallelize computation~~ — Already 99%+ I/O; computation gains are futile
 

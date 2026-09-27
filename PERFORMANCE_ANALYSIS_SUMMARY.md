@@ -1,10 +1,14 @@
-# Performance Analysis: git-of-theseus-analyze is I/O-Bound
+# Performance Analysis: Blame Is the Optimization Target
 
 ## TL;DR
 
-Measured timing data **proves the binary is I/O-bound (99.6% I/O vs. 0.4% computation)**, disproving the hypothesis that it is compute-bound.
+`repo.blame_file()` is the dominant expensive operation by code-path inspection. The historical timing percentages below are not valid wall-time percentages: blame and post-blame durations were summed across workers, while some other stage timers measured elapsed time.
 
-**Blame operations (git I/O) consume 99.6% of execution time across three test repositories.**
+Use the corrected `--measure-time` output and compare analysis wall time under identical conditions before claiming a speedup.
+
+The repository and timing tables below preserve the original investigation
+notes. Their worker-time values may still be useful as summed call durations,
+but their percentages and conclusions about total elapsed time are superseded.
 
 ---
 
@@ -103,8 +107,8 @@ Evidence:
 ## Performance Optimization Roadmap
 
 ### Will Help (Targets I/O)
-1. **Cache blame results** — Each file blamed per-commit; caching → 50–200x speedup
-2. **Batch git operations** — Request multiple files in one libgit2 call
+1. **Measure per-file blame** — `--measure-time` reports call worker-time and average call time
+2. **Batch blame** — Not supported by the current libgit2 API; see `IO_OPTIMIZATION_GUIDE.md`
 3. **Use git shallow clones** — Reduce commit history depth (if applicable)
 
 ### Will Not Help (Targets Computation)

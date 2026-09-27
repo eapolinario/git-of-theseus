@@ -137,7 +137,10 @@ fn write_commit_graphs(repo_dirs: &[PathBuf]) -> Result<()> {
     Ok(())
 }
 
-fn print_timing_stats(timing: &got_core::analyze::TimingStats, analysis_elapsed: std::time::Duration) {
+fn print_timing_stats(
+    timing: &got_core::analyze::TimingStats,
+    analysis_elapsed: std::time::Duration,
+) {
     let blame_us = timing
         .blame_time_us
         .load(std::sync::atomic::Ordering::Relaxed);
@@ -169,14 +172,8 @@ fn print_timing_stats(timing: &got_core::analyze::TimingStats, analysis_elapsed:
     };
 
     eprintln!("\n=== Timing Statistics ===");
-    eprintln!(
-        "Blame call worker-time:   {:8.1}ms",
-        blame_ms
-    );
-    eprintln!(
-        "Average blame call:      {:8.3}ms",
-        average_blame_ms
-    );
+    eprintln!("Blame call worker-time:   {:8.1}ms", blame_ms);
+    eprintln!("Average blame call:      {:8.3}ms", average_blame_ms);
     eprintln!("Post-blame worker-time:  {:8.1}ms", post_blame_ms);
     eprintln!("Fast-diff elapsed:       {:8.1}ms", fastdiff_ms);
     eprintln!("Tree discovery elapsed:  {:8.1}ms", tree_discovery_ms);
@@ -186,17 +183,5 @@ fn print_timing_stats(timing: &got_core::analyze::TimingStats, analysis_elapsed:
         analysis_elapsed.as_secs_f64() * 1000.0
     );
     eprintln!("Files blamed:            {}", files_blamed);
-    eprintln!(
-        "Note: worker-time sums concurrent tasks and is not wall time."
-    );
-    eprintln!(
-        "\nI/O operations: {:.1}ms ({:.1}%)",
-        blame_ms + tree_discovery_ms + commit_walk_ms,
-        pct(blame_ms + tree_discovery_ms + commit_walk_ms)
-    );
-    eprintln!(
-        "Computation:    {:.1}ms ({:.1}%)",
-        post_blame_ms + fastdiff_ms,
-        pct(post_blame_ms + fastdiff_ms)
-    );
+    eprintln!("Note: worker-time sums concurrent tasks and is not wall time.");
 }

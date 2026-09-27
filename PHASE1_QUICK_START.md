@@ -1,6 +1,6 @@
-# Phase 1: Quick Start (6x Speedup in 30 Minutes)
+# Phase 1: Quick Start
 
-**Goal:** Get a 6x performance improvement with zero code changes.
+**Goal:** Try low-effort analysis options and measure their impact on your repository.
 
 ---
 
@@ -14,7 +14,8 @@ git-of-theseus-analyze \
   --outdir /tmp/baseline \
   .
 
-# Note: Look at "Total:" time (e.g., 2197.8ms)
+# Compare "Analysis wall time" across runs with otherwise identical settings.
+# Blame call worker-time is summed across workers, not elapsed time.
 ```
 
 ---
@@ -108,14 +109,15 @@ git-of-theseus-analyze `
 
 ### Before (Baseline)
 ```
-Total: 2197.8ms
-Blame (I/O): 2193.7ms (99.8%)
+Analysis wall time: <measured elapsed time>
+Blame call worker-time: <summed across concurrent blame calls>
+Average blame call: <worker-time divided by files blamed>
 ```
 
 ### After Phase 1
 ```
-Total: ~400–500ms  (6x faster!)
-Blame (I/O): same work, but overlapped with parallelism
+Analysis wall time: <measure after changing options>
+Blame call worker-time: may differ with interval and worker count
 ```
 
 ### Speedup Breakdown
@@ -162,8 +164,8 @@ Verify timing improved:
 git-of-theseus-analyze --measure-time --interval 1209600 --procs 32 --outdir output C:\ssd\repo
 
 # Compare output
-# Before: Total: 2197.8ms
-# After:  Total: ~400ms
+# Before: Analysis wall time: <baseline>
+# After:  Analysis wall time: <measured after the change>
 # Improvement: 2197.8 / 400 ≈ 5.5x ✅
 ```
 
@@ -202,7 +204,7 @@ git-of-theseus-analyze --interval 1209600 --procs 32 --outdir output <original-r
 git-of-theseus-analyze --interval 1209600 --interval 2419200 --procs 32 --outdir output <hdd-repo>
 # 4-week interval: 4x faster
 # Max parallelism: 1.2x
-# Total: ~5x speedup without needing SSD
+# Compare Analysis wall time under identical conditions
 ```
 
 ### "Not seeing 6x speedup"
