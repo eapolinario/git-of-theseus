@@ -262,8 +262,12 @@ estimated a 10–50x speedup. Investigation in #42 showed the idea does not work
 A `perf` profile of `blame_file()` instead shows the cost is spread across
 SHA-1 verification of every object read (~16%), per-diff config snapshot
 copy/free (~13%), file-stamp `stat` checks (~9–10%) and packfile inflation
-(~8%). Those libgit2 overheads are tracked as separate follow-ups; the large
-wins remain reducing how much blame work is done (Tier 2 caching, §3.2, §3.3).
+(~8%). Those libgit2 overheads are tracked as separate follow-ups — opt-in
+SHA-1 skip ([#67](https://github.com/eapolinario/git-of-theseus/issues/67)),
+blob caching ([#66](https://github.com/eapolinario/git-of-theseus/issues/66)) and
+config/file-stamp overhead ([#68](https://github.com/eapolinario/git-of-theseus/issues/68)).
+Each is worth ~10–20%, not 10x; the large wins remain reducing how much blame
+work is done (Tier 2 caching, §3.2, §3.3).
 
 ---
 
