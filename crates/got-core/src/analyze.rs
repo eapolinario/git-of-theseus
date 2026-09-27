@@ -73,6 +73,14 @@ pub struct AnalyzeOptions {
     pub measure_time: bool,
     /// Timing statistics (only populated if measure_time is true).
     pub timing: TimingStats,
+    /// Skip libgit2's SHA-1 verification of object contents on every read.
+    ///
+    /// This is a **global**, process-wide `libgit2` setting (set once,
+    /// before the rayon thread pool starts) that measurably speeds up
+    /// `blame_file()` (roughly 20% in profiling) at the cost of no longer
+    /// detecting object corruption on read. Off by default; only enable
+    /// this if you trust the repository's integrity.
+    pub skip_hash_verification: bool,
 }
 
 impl Default for AnalyzeOptions {
@@ -92,6 +100,7 @@ impl Default for AnalyzeOptions {
             merge: false,
             measure_time: false,
             timing: TimingStats::default(),
+            skip_hash_verification: false,
         }
     }
 }
@@ -162,6 +171,8 @@ pub fn analyze_many(repo_dirs: &[PathBuf], options: &AnalyzeOptions) -> Result<V
         opts.repo_dir = repo_dirs[0].clone();
         return Ok(vec![analyze(&opts)?]);
     }
+
+    apply_global_libgit2_options(options);
 
     // Built once and shared across every repository below, instead of each
     // repository spawning (and tearing down) its own worker threads.
@@ -315,8 +326,20 @@ fn merge_curve_maps(
 /// Runs the analysis but does not touch the filesystem. Useful for tests
 /// and embedding in WASM / library contexts.
 pub fn analyze_in_memory(options: &AnalyzeOptions) -> Result<AnalyzeResult> {
+    apply_global_libgit2_options(options);
     let pool = build_thread_pool(options.procs)?;
     analyze_in_memory_with_pool(options, &pool)
+}
+
+/// Applies process-global `libgit2` options derived from `options`.
+///
+/// This must run once per process before the rayon thread pool starts (and
+/// never from inside a worker thread), since these settings are global,
+/// process-wide `libgit2` state, not per-repository or per-thread.
+fn apply_global_libgit2_options(options: &AnalyzeOptions) {
+    if options.skip_hash_verification {
+        git2::opts::strict_hash_verification(false);
+    }
 }
 
 /// Same as [`analyze_in_memory`], but reuses a caller-provided thread pool

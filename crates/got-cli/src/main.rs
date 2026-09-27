@@ -72,6 +72,17 @@ struct Cli {
     #[arg(long, default_value_t = false)]
     opt: bool,
 
+    /// Skip libgit2's SHA-1 verification of object contents on every read.
+    ///
+    /// This is a global, process-wide libgit2 setting applied once before
+    /// analysis starts. It can measurably speed up blame (roughly 20% in
+    /// profiling) but weakens corruption detection: a bit-flipped or
+    /// otherwise corrupted object will no longer be caught by hash
+    /// mismatch. Off by default; only enable this if you trust the
+    /// repository's integrity (e.g. a freshly cloned/verified repo).
+    #[arg(long, default_value_t = false)]
+    skip_hash_verification: bool,
+
     /// Path(s) to the git repository/repositories to analyze. When more
     /// than one is given, each is analyzed independently and its JSON
     /// output is written to a subdirectory of `--outdir` named after the
@@ -106,6 +117,7 @@ fn main() -> Result<()> {
         merge: cli.merge,
         measure_time: cli.measure_time,
         timing: Default::default(),
+        skip_hash_verification: cli.skip_hash_verification,
     };
     analyze_many(&cli.repo_dir, &options)?;
 
