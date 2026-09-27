@@ -7,6 +7,7 @@
 
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::Instant;
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
@@ -107,10 +108,12 @@ fn main() -> Result<()> {
         measure_time: cli.measure_time,
         timing: Default::default(),
     };
+    let analysis_start = Instant::now();
     analyze_many(&cli.repo_dir, &options)?;
+    let analysis_elapsed = analysis_start.elapsed();
 
     if cli.measure_time {
-        print_timing_stats(&options.timing);
+        print_timing_stats(&options.timing, analysis_elapsed);
     }
     Ok(())
 }
@@ -134,7 +137,7 @@ fn write_commit_graphs(repo_dirs: &[PathBuf]) -> Result<()> {
     Ok(())
 }
 
-fn print_timing_stats(timing: &got_core::analyze::TimingStats) {
+fn print_timing_stats(timing: &got_core::analyze::TimingStats, analysis_elapsed: std::time::Duration) {
     let blame_us = timing
         .blame_time_us
         .load(std::sync::atomic::Ordering::Relaxed);
@@ -159,45 +162,33 @@ fn print_timing_stats(timing: &got_core::analyze::TimingStats) {
     let fastdiff_ms = fastdiff_us as f64 / 1000.0;
     let tree_discovery_ms = tree_discovery_us as f64 / 1000.0;
     let commit_walk_ms = commit_walk_us as f64 / 1000.0;
-    let total_ms = blame_ms + post_blame_ms + fastdiff_ms + tree_discovery_ms + commit_walk_ms;
-    // Avoid NaN percentages when nothing was measured (e.g. an empty repository).
-    let pct = |part: f64| {
-        if total_ms > 0.0 {
-            (part / total_ms) * 100.0
-        } else {
-            0.0
-        }
+    let average_blame_ms = if files_blamed > 0 {
+        blame_ms / files_blamed as f64
+    } else {
+        0.0
     };
 
     eprintln!("\n=== Timing Statistics ===");
     eprintln!(
-        "Blame (I/O):              {:8.1}ms ({:5.1}%)",
-        blame_ms,
-        pct(blame_ms)
+        "Blame call worker-time:   {:8.1}ms",
+        blame_ms
     );
     eprintln!(
-        "Post-blame (compute):    {:8.1}ms ({:5.1}%)",
-        post_blame_ms,
-        pct(post_blame_ms)
+        "Average blame call:      {:8.3}ms",
+        average_blame_ms
     );
+    eprintln!("Post-blame worker-time:  {:8.1}ms", post_blame_ms);
+    eprintln!("Fast-diff elapsed:       {:8.1}ms", fastdiff_ms);
+    eprintln!("Tree discovery elapsed:  {:8.1}ms", tree_discovery_ms);
+    eprintln!("Commit walk elapsed:     {:8.1}ms", commit_walk_ms);
     eprintln!(
-        "Fast-diff:               {:8.1}ms ({:5.1}%)",
-        fastdiff_ms,
-        pct(fastdiff_ms)
+        "Analysis wall time:      {:8.1}ms",
+        analysis_elapsed.as_secs_f64() * 1000.0
     );
-    eprintln!(
-        "Tree discovery (I/O):    {:8.1}ms ({:5.1}%)",
-        tree_discovery_ms,
-        pct(tree_discovery_ms)
-    );
-    eprintln!(
-        "Commit walk (I/O):       {:8.1}ms ({:5.1}%)",
-        commit_walk_ms,
-        pct(commit_walk_ms)
-    );
-    eprintln!("---");
-    eprintln!("Total:                   {:8.1}ms", total_ms);
     eprintln!("Files blamed:            {}", files_blamed);
+    eprintln!(
+        "Note: worker-time sums concurrent tasks and is not wall time."
+    );
     eprintln!(
         "\nI/O operations: {:.1}ms ({:.1}%)",
         blame_ms + tree_discovery_ms + commit_walk_ms,

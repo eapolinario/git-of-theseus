@@ -1,6 +1,6 @@
 # I/O Optimization Guide: git-of-theseus-analyze
 
-Since 99.6% of execution time is spent on `repo.blame_file()` I/O operations, this guide identifies concrete optimization strategies ranked by impact and implementation complexity.
+Blame is the expensive analysis operation, but its cumulative worker time is not the same as wall-clock time. This guide avoids speedup estimates that have not been validated against elapsed-time benchmarks.
 
 ---
 
@@ -9,9 +9,9 @@ Since 99.6% of execution time is spent on `repo.blame_file()` I/O operations, th
 | Priority | Optimization | Est. Speedup | Complexity | Description |
 |----------|--------------|-------------|-----------|-------------|
 | 🔴 High | **Reduce sampled commits** | 2–10x | ✅ Trivial | Sample fewer commits with `--interval` |
-| 🔴 High | **Blame result caching** | 50–200x | ⚠️ Medium | Cache per-(file, commit) blame results |
-| 🟠 Medium | **Aggressive parallelism** | 1.5–3x | ⚠️ Medium | Increase thread pool, batch blame calls |
+| 🟠 Medium | **Aggressive parallelism** | Measure locally | ⚠️ Medium | Tune the worker pool for the repository and storage |
 | 🟠 Medium | **Prefetch + pipelining** | 2–5x | 🔴 Hard | Queue blame ops ahead of fast-diff |
+| — | **Batch blame via libgit2 ODB** | Not supported | — | No multi-object read or multi-file blame API |
 | 🟡 Low | **Git config optimization** | 1.1–1.5x | ✅ Trivial | Enable object caching, use local-only |
 | 🟡 Low | **Storage optimization** | 1.5–3x | ✅ Trivial | Use SSD, local git repo (not network) |
 
@@ -237,49 +237,32 @@ show little or no improvement. Report measured speedup only.
 
 ## TIER 3: Major Improvements (Significant Code Changes)
 
-### 3.1 Batch Blame Operations (10–50x Speedup)
+### 3.1 Batch Blame Operations: Not Available in the Current libgit2 API
 
-**Current code:**
-```rust
-fn blame_commit_window(..., plans: &[CommitPlan], ...) {
-    tasks.par_iter().map_init(open_repo, |repo, (plan_idx, commit_oid, entry)| {
-        blame_one(repo, entry, ...)  // ← One repo.blame_file() per file
-    })
-}
-```
+The Rust analyzer uses `git2` 0.19, which bundles libgit2 1.8.1. The public
+object-database API reads one object per `git_odb_read` call; its multi-ID API,
+`git_odb_expand_ids`, resolves abbreviated IDs but does not read object contents.
+The blame API likewise operates on one file at a time (`git_blame_file`).
+There is no `read_many` or multi-file blame operation to call from this project.
 
-**Problem:** Each `repo.blame_file()` call:
-- Opens a file handle
-- Reconstructs file history
-- Parses blame hunks
-- **No batching: 2,908 separate git operations for flyte repo**
+Reading each target blob with `repo.odb()?.read(blob_oid)` would only preload
+that file's current blob, not the historical commits, trees, and blobs that
+blame needs to reconstruct attribution. It duplicates a read that blame itself
+must perform and is not evidence of a performance improvement. The previously
+suggested `read_many` pseudocode and 10–50x estimate were speculative and have
+been removed.
 
-**Optimization:** Use libgit2's `odb` (object database) APIs to batch requests:
+The current safe path is to keep one blame operation per changed file and
+measure it before attempting lower-level alternatives. With `--measure-time`,
+compare `Analysis wall time` across runs using the same repository, revision,
+interval, filters, and `--procs`; `Blame call worker-time` and its per-call
+average are summed across concurrent workers, so they are useful for profiling
+but are not elapsed time or a speedup metric.
 
-```rust
-// Pseudocode: batch blame approach
-let oids_to_fetch: Vec<Oid> = entries.iter()
-    .map(|e| e.blob_oid)
-    .collect();
-
-// Fetch all objects in one batch
-repo.odb()?.read_many(&oids_to_fetch)?;
-
-// Then blame with pre-populated cache
-for entry in entries {
-    repo.blame_file(...)  // ← Much faster, objects cached
-}
-```
-
-**Benefit:** One batch I/O operation instead of 2,908 separate operations.
-
-**Estimated speedup:** 10–50x (depends on libgit2's internal batching support)
-
-**Implementation complexity:** Hard (requires understanding libgit2 internals)
-
-**Estimated effort:** 8–12 hours
-
-**Code location:** `crates/got-core/src/analyze.rs`, functions `blame_commit_window()` and `blame_one()`
+**Status:** No batched implementation is justified by the available API.
+Reopen this investigation only with a concrete alternative (for example, a
+different backend or libgit2 enhancement) and benchmark it against the current
+path while requiring byte-identical output.
 
 ---
 
@@ -482,9 +465,9 @@ git-of-theseus-analyze \
 
 ### Phase 2: Algorithmic Improvements (Code changes, 4–6 hours)
 1. ⏳ Prefetch + pipelining (2–5x)
-2. ⏳ Batch blame operations (10–50x)
+2. ⏸️ Batch blame operations (no multi-object read or multi-file blame API)
 
-**Combined speedup: ~15–200x**
+Do not combine speedup estimates; benchmark each supported change by wall time.
 
 ### Phase 3: Major Refactoring (Code changes, 10–16 hours)
 1. 🔮 Intelligent commit sampling (5–20x)
@@ -518,7 +501,7 @@ git-of-theseus-analyze --measure-time --outdir after ~/repo
 | Reduce interval | 2–10x | 0h | ✅ Start with 2-week |
 | Parallelism | 1.1–1.5x | 0h | ✅ Match CPU count |
 | Prefetch/pipeline | 2–5x | 6h | ⏳ Priority 1 |
-| Batch blame | 10–50x | 12h | ⏳ Priority 2 |
+| Batch blame via libgit2 ODB | Not supported by current API | — | ⏸️ Do not implement |
 | Adaptive sampling | 5–20x | 10h | ⏳ Priority 3 |
 | Incremental | 100x+ | 16h | 🔮 Medium-term |
 

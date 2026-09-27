@@ -6,11 +6,9 @@ Complete guide to understanding and optimizing the I/O-bound `git-of-theseus-ana
 
 ## 📊 Quick Facts
 
-- **Current bottleneck:** 99.6% I/O (blame operations), 0.4% computation
-- **Blame time per file:** 7.5–61ms (depends on commit history depth)
-- **Maximum practical speedup with Phase 1 (no code):** 6x
-- **Maximum practical speedup with Phase 2 (code):** 200x
-- **Measurement tool:** `--measure-time` CLI flag
+- **Primary expensive operation:** Per-file blame (`repo.blame_file()`)
+- **Batch blame status:** The pinned libgit2 API has no multi-object read or multi-file blame call
+- **Measurement tool:** `--measure-time` reports wall time and aggregate worker-time; do not treat worker-time as elapsed time
 
 ---
 
@@ -31,19 +29,15 @@ Complete guide to understanding and optimizing the I/O-bound `git-of-theseus-ana
 ---
 
 #### [TIMING_MEASUREMENTS.md](TIMING_MEASUREMENTS.md)
-**Purpose:** See empirical proof from actual measurements
+**Purpose:** Review legacy measurements and the corrected interpretation
 **Contents:**
 - Measurement methodology (microsecond precision)
 - Test results on 3 repositories with different profiles
-- Comparative analysis showing consistent 99.6% I/O
-- Per-file blame cost breakdown
+- Previously recorded timing output, with a caveat about aggregate worker-time
+- Per-file blame cost reporting
 
 **Test results:**
-| Repo | I/O % | Compute % | Ratio |
-|------|-------|-----------|-------|
-| git-of-theseus | 99.8% | 0.2% | 1:548 |
-| flyte | 99.1% | 0.9% | 1:109 |
-| dotfiles | 99.9% | 0.1% | 1:1431 |
+Legacy percentages mixed summed parallel worker-time with elapsed stage times and should not be used as wall-time percentages or speedup evidence.
 
 **Read this if:** You want to see actual measurements
 
@@ -78,7 +72,7 @@ Complete guide to understanding and optimizing the I/O-bound `git-of-theseus-ana
 - Blame result caching (already implemented!) ✅
 
 **TIER 3 - Major Changes (significant code):**
-- Batch blame operations → 10–50x faster
+- Batch blame via libgit2 ODB → not supported by the current API
 - Intelligent commit sampling → 5–20x faster
 - Incremental analysis → 100x+ for reruns
 
@@ -166,12 +160,9 @@ Parallelism tuning   1.1–1.5x  (use --procs 32)
 COMBINED:            2.5–6x speedup
 ```
 
-### With Phase 2 Code Changes (12 hours)
+### With Phase 2 Code Changes
 ```
 Prefetch/pipeline    2–5x      (4–6 hours implementation)
-Batch blame ops      10–50x    (8–12 hours implementation)
-──────────────────────────────
-COMBINED:            20–250x speedup
 ```
 
 ### With Phase 3 Refactoring (16 hours)
@@ -202,17 +193,11 @@ cargo build --release
 ### Output Interpretation
 ```
 === Timing Statistics ===
-Blame (I/O):              2193.7ms (99.8%)  ← I/O bottleneck
-Post-blame (compute):        3.5ms (0.2%)  ← Negligible
-Fast-diff:                   0.5ms (0.0%)  ← Negligible
-Tree discovery (I/O):        0.0ms (0.0%)  ← Small
-Commit walk (I/O):           0.0ms (0.0%)  ← Small
----
-Total:                    2197.8ms
+Blame call worker-time:    2193.7ms
+Average blame call:          16.130ms
+Analysis wall time:        2197.8ms
 Files blamed:               136
-
-I/O operations: 2193.7ms (99.8%)  ← Focus optimization here!
-Computation:       4.0ms (0.2%)   ← Don't waste time on this
+Note: worker-time sums concurrent tasks and is not wall time.
 ```
 
 ---
@@ -228,7 +213,7 @@ START
   │
   ├─ Willing to code?
   │  ├─ YES, 4–6 hours → Implement prefetch/pipeline (2–5x)
-  │  ├─ YES, 8–12 hours → Implement batch blame (10–50x)
+  │  ├─ Batch blame → Not supported by the current libgit2 API
   │  └─ NO → Use Phase 1 optimizations only
   │
   └─ Long-term project?
@@ -281,7 +266,6 @@ git-of-theseus-analyze \
 
 ### What WILL Help
 ✅ Reducing number of commits (--interval)
-✅ Batching I/O operations
 ✅ Using local/SSD storage
 ✅ Caching blame results
 ✅ Pipelining blame with fast-diff
@@ -293,7 +277,10 @@ git-of-theseus-analyze \
 ❌ Parallelizing fast-diff (already fast)
 
 ### Critical Insight
-Blame operations (`repo.blame_file()`) are **I/O-bound** because they:
+Blame operations (`repo.blame_file()`) revisit file history and are the primary
+performance target, but benchmark elapsed wall time rather than deriving
+percentages from aggregate worker-time. The current libgit2 API does not expose
+multi-file blame or multi-object content reads.
 - Reconstruct entire file history from git objects
 - Each object requires disk/network access
 - For deep histories: 1,000–10,000 I/O operations per file
@@ -320,6 +307,6 @@ For questions about specific optimizations, refer to the appropriate document li
 | IO_BOUND_ANALYSIS.md | Why I/O-bound | 5 min read | Understanding |
 | TIMING_MEASUREMENTS.md | Proof (empirical) | 10 min read | Conviction |
 | IO_OPTIMIZATION_GUIDE.md | What to optimize | 15 min read | Strategy |
-| PREFETCH_PIPELINING_IMPLEMENTATION.md | How to optimize | 30 min read + 6h code | 2–5x speedup |
+| PREFETCH_PIPELINING_IMPLEMENTATION.md | Pipelining details | 30 min read | See measured wall time |
 
 **Recommended path:** Read all 4 docs in order, then implement Phase 1 (no coding, 6x speedup), then Phase 2 if needed.
