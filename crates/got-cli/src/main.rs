@@ -172,16 +172,20 @@ fn print_timing_stats(
     };
 
     eprintln!("\n=== Timing Statistics ===");
-    eprintln!("Blame call worker-time:   {:8.1}ms", blame_ms);
-    eprintln!("Average blame call:      {:8.3}ms", average_blame_ms);
-    eprintln!("Post-blame worker-time:  {:8.1}ms", post_blame_ms);
-    eprintln!("Fast-diff elapsed:       {:8.1}ms", fastdiff_ms);
-    eprintln!("Tree discovery elapsed:  {:8.1}ms", tree_discovery_ms);
-    eprintln!("Commit walk elapsed:     {:8.1}ms", commit_walk_ms);
+    eprintln!("{:<26}{:>8.1}ms", "Blame call worker-time:", blame_ms);
+    eprintln!("{:<26}{:>8.3}ms", "Average blame call:", average_blame_ms);
+    eprintln!("{:<26}{:>8.1}ms", "Post-blame worker-time:", post_blame_ms);
+    eprintln!("{:<26}{:>8.1}ms", "Fast-diff elapsed:", fastdiff_ms);
     eprintln!(
-        "Analysis wall time:      {:8.1}ms",
+        "{:<26}{:>8.1}ms",
+        "Tree discovery elapsed:", tree_discovery_ms
+    );
+    eprintln!("{:<26}{:>8.1}ms", "Commit walk elapsed:", commit_walk_ms);
+    eprintln!(
+        "{:<26}{:>8.1}ms",
+        "Analysis wall time:",
         analysis_elapsed.as_secs_f64() * 1000.0
     );
-    eprintln!("Files blamed:            {}", files_blamed);
+    eprintln!("{:<26}{}", "Files blamed:", files_blamed);
     eprintln!("Note: worker-time sums concurrent tasks and is not wall time.");
 }
