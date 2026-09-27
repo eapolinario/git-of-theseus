@@ -23,6 +23,9 @@ A `perf` profile of `blame_file()` showed roughly 20-25% of blame time in
 libgit2's per-diff setup: about 13% copying/freeing a config snapshot and
 about 9-10% checking file stamps. This overhead is currently not avoidable
 from git-of-theseus without changing libgit2 or the `git2` bindings.
+This was verified on 2026-09-27 against the workspace-pinned `git2` 0.19 /
+libgit2 1.8.1; re-check the currently pinned crate sources before revisiting
+this conclusion.
 
 Findings:
 
