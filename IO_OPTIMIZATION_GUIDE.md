@@ -10,7 +10,7 @@ Since 99.6% of execution time is spent on `repo.blame_file()` I/O operations, th
 |----------|--------------|-------------|-----------|-------------|
 | 🔴 High | **Reduce sampled commits** | 2–10x | ✅ Trivial | Sample fewer commits with `--interval` |
 | 🔴 High | **Blame result caching** | 50–200x | ⚠️ Medium | Cache per-(file, commit) blame results |
-| 🟠 Medium | **Aggressive parallelism** | 1.5–3x | ⚠️ Medium | Increase thread pool, batch blame calls |
+| 🟠 Medium | **Aggressive parallelism** | 1.5–3x | ⚠️ Medium | Increase thread pool |
 | 🟠 Medium | **Prefetch + pipelining** | 2–5x | 🔴 Hard | Queue blame ops ahead of fast-diff |
 | 🟡 Low | **Git config optimization** | 1.1–1.5x | ✅ Trivial | Enable object caching, use local-only |
 | 🟡 Low | **Storage optimization** | 1.5–3x | ✅ Trivial | Use SSD, local git repo (not network) |
@@ -237,49 +237,33 @@ show little or no improvement. Report measured speedup only.
 
 ## TIER 3: Major Improvements (Significant Code Changes)
 
-### 3.1 Batch Blame Operations (10–50x Speedup)
+### 3.1 ~~Batch Blame Operations~~ (Disproven — see [#42](https://github.com/eapolinario/git-of-theseus/issues/42))
 
-**Current code:**
-```rust
-fn blame_commit_window(..., plans: &[CommitPlan], ...) {
-    tasks.par_iter().map_init(open_repo, |repo, (plan_idx, commit_oid, entry)| {
-        blame_one(repo, entry, ...)  // ← One repo.blame_file() per file
-    })
-}
-```
+This section originally proposed prefetching blob objects through a batched
+libgit2 `odb` call (`read_many`) before calling `repo.blame_file()`, and
+estimated a 10–50x speedup. Investigation in #42 showed the idea does not work:
 
-**Problem:** Each `repo.blame_file()` call:
-- Opens a file handle
-- Reconstructs file history
-- Parses blame hunks
-- **No batching: 2,908 separate git operations for flyte repo**
+- **No batch API exists.** libgit2 1.8.1 (`git2` 0.19 / `libgit2-sys` 0.17)
+  exposes only single-object reads (`git_odb_read`, `Odb::read`,
+  `Odb::read_header`, `Odb::reader`). There is no `read_many`.
+- **Prefetched blobs are not retained.** libgit2's object cache limit for blobs
+  is 0 by default (`src/libgit2/cache.c`), so a blob read ahead of time is
+  discarded immediately.
+- **The prefetched objects are the wrong ones.** Blame walks ancestor commits,
+  runs tree-to-tree diffs and loads each historical version of the file. The
+  proposal would only prefetch the newest version of each file.
+- **There is no per-file open overhead to amortize.** Each rayon worker already
+  opens its `Repository` and `Mailmap` once (`blame_commit_window()`), and
+  packfile maps are shared inside libgit2.
+- **Measured:** prefetching every to-be-blamed blob on each worker had no effect
+  (summed blame time ~945 ms → ~926 ms; wall time 0.34 s → 0.37 s) on this
+  repository with `--interval 3600` (207 blames). Output was byte-identical.
 
-**Optimization:** Use libgit2's `odb` (object database) APIs to batch requests:
-
-```rust
-// Pseudocode: batch blame approach
-let oids_to_fetch: Vec<Oid> = entries.iter()
-    .map(|e| e.blob_oid)
-    .collect();
-
-// Fetch all objects in one batch
-repo.odb()?.read_many(&oids_to_fetch)?;
-
-// Then blame with pre-populated cache
-for entry in entries {
-    repo.blame_file(...)  // ← Much faster, objects cached
-}
-```
-
-**Benefit:** One batch I/O operation instead of 2,908 separate operations.
-
-**Estimated speedup:** 10–50x (depends on libgit2's internal batching support)
-
-**Implementation complexity:** Hard (requires understanding libgit2 internals)
-
-**Estimated effort:** 8–12 hours
-
-**Code location:** `crates/got-core/src/analyze.rs`, functions `blame_commit_window()` and `blame_one()`
+A `perf` profile of `blame_file()` instead shows the cost is spread across
+SHA-1 verification of every object read (~16%), per-diff config snapshot
+copy/free (~13%), file-stamp `stat` checks (~9–10%) and packfile inflation
+(~8%). Those libgit2 overheads are tracked as separate follow-ups; the large
+wins remain reducing how much blame work is done (Tier 2 caching, §3.2, §3.3).
 
 ---
 
@@ -482,9 +466,7 @@ git-of-theseus-analyze \
 
 ### Phase 2: Algorithmic Improvements (Code changes, 4–6 hours)
 1. ⏳ Prefetch + pipelining (2–5x)
-2. ⏳ Batch blame operations (10–50x)
-
-**Combined speedup: ~15–200x**
+2. ❌ ~~Batch blame operations~~ — disproven, see [#42](https://github.com/eapolinario/git-of-theseus/issues/42)
 
 ### Phase 3: Major Refactoring (Code changes, 10–16 hours)
 1. 🔮 Intelligent commit sampling (5–20x)
@@ -518,8 +500,8 @@ git-of-theseus-analyze --measure-time --outdir after ~/repo
 | Reduce interval | 2–10x | 0h | ✅ Start with 2-week |
 | Parallelism | 1.1–1.5x | 0h | ✅ Match CPU count |
 | Prefetch/pipeline | 2–5x | 6h | ⏳ Priority 1 |
-| Batch blame | 10–50x | 12h | ⏳ Priority 2 |
+| ~~Batch blame~~ | none measured | — | ❌ Disproven ([#42](https://github.com/eapolinario/git-of-theseus/issues/42)) |
 | Adaptive sampling | 5–20x | 10h | ⏳ Priority 3 |
 | Incremental | 100x+ | 16h | 🔮 Medium-term |
 
-**Best case with Phase 1 + Phase 2:** 40–300x speedup
+**Best case with Phase 1 + Phase 2:** the earlier 40–300x estimate assumed batch blame; with that disproven, Phase 2 is limited to the unmeasured prefetch/pipeline estimate.
