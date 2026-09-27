@@ -104,8 +104,10 @@ Evidence:
 
 ### Will Help (Targets I/O)
 1. **Cache blame results** — Each file blamed per-commit; caching → 50–200x speedup
-2. **Batch git operations** — Request multiple files in one libgit2 call
-3. **Use git shallow clones** — Reduce commit history depth (if applicable)
+2. **Use git shallow clones** — Reduce commit history depth (if applicable)
+
+### Disproven
+- ❌ **Batch git operations** — libgit2 1.8.1 has no batch object read API, and prefetching blobs before `blame_file()` measured no speedup (see [#42](https://github.com/eapolinario/git-of-theseus/issues/42))
 
 ### Will Not Help (Targets Computation)
 - ❌ Optimize histogram aggregation (only 0.4% of time)

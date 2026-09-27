@@ -13,6 +13,17 @@ Timing is collected via `std::time::Instant` and stored in thread-safe atomic co
 
 Enable timing with the `--measure-time` CLI flag.
 
+> **How to read these numbers.** Each counter is summed across all worker
+> threads, so the reported "Total" is aggregate thread time, not wall-clock
+> time. The "Blame (I/O)" label covers the whole `repo.blame_file()` call,
+> which includes CPU-heavy work inside libgit2 (tree-to-tree diffs, line diffs,
+> SHA-1 verification of every object read, zlib inflation) as well as disk
+> reads; it is not a pure I/O measurement. A `perf` profile of `blame_file()`
+> ([#42](https://github.com/eapolinario/git-of-theseus/issues/42)) attributes
+> roughly 16% to SHA-1 verification, 13% to per-diff config snapshotting,
+> 9–10% to file-stamp `stat` checks and 8% to packfile inflation. "Files
+> blamed" counts `blame_file()` calls (one per changed file per sampled commit).
+
 ---
 
 ## Test Results
@@ -137,10 +148,12 @@ For 265 files (dotfiles):        16317.2ms blame / 265 files = 61.6ms per file
   - 50 sampled commits × parallelism factor means each file-commit pair processes in parallel
   - Total work is still dominated by I/O, but wall-clock time is reduced by thread-pool parallelism
   
-- dotfiles' ratio (61.6ms/file) is high because it has 200 sampled commits
-  - Each file must be blamed 200 times (once per sampled commit)
-  - 265 files × 200 blame operations = 53,000 blame calls total
-  - Even at parallelism, git object database I/O becomes the bottleneck
+- dotfiles' ratio (61.6ms/call) is high because each blame walks a deep history
+  - "Files blamed" already counts blame calls: 265 is the total number of
+    `blame_file()` calls, not a per-commit file count. Only files whose blob
+    changed since the previous sampled commit are re-blamed, so there were not
+    265 × 200 = 53,000 calls.
+  - The cost per call grows with how much history each blame must traverse
 
 - git-of-theseus' ratio (16.1ms/file) falls between them
   - ~30 sampled commits, relatively small files
@@ -223,7 +236,7 @@ Actual: 7.4x slower
 **Optimization opportunities (in priority order):**
 1. **Cache blame results** — Each file blamed multiple times (once per sampled commit); caching could provide 50–200x speedup
 2. **Use git object cache optimizations** — Improve git's internal caching
-3. **Batch blame operations** — Request multiple files in one git operation (if supported by libgit2)
+3. ~~**Batch blame operations**~~ — Disproven: libgit2 has no batch object read, and prefetching measured no gain ([#42](https://github.com/eapolinario/git-of-theseus/issues/42))
 4. **Pre-compute shallow blames** — Use faster algorithms for early samples
 5. ~~Parallelize computation~~ — Already 99%+ I/O; computation gains are futile
 
