@@ -19,10 +19,10 @@ Since 99.6% of execution time is spent on `repo.blame_file()` I/O operations, th
 
 ## Follow-up: libgit2 Per-Diff Setup Overhead
 
-A `perf` profile of `blame_file()` showed roughly 20% of blame time in
+A `perf` profile of `blame_file()` showed roughly 20-25% of blame time in
 libgit2's per-diff setup: about 13% copying/freeing a config snapshot and
-about 9-10% checking file stamps. This overhead is currently not avoidable from
-git-of-theseus without changing libgit2 or the `git2` bindings.
+about 9-10% checking file stamps. This overhead is currently not avoidable
+from git-of-theseus without changing libgit2 or the `git2` bindings.
 
 Findings:
 
