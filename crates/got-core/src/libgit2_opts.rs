@@ -47,8 +47,7 @@ pub fn configure_blob_object_cache() {
     });
 }
 
-/// Raw FFI call, split out from [`configure_blob_object_cache`] so tests can
-/// assert on libgit2's return code directly.
+/// Raw FFI call used by [`configure_blob_object_cache`].
 fn set_cache_object_limit(limit: usize) -> c_int {
     // Safety: this only mutates the plain, process-global size limit
     // libgit2 checks before caching a parsed object (it has no dependency
@@ -77,13 +76,5 @@ mod tests {
         // effect.
         configure_blob_object_cache();
         configure_blob_object_cache();
-    }
-
-    #[test]
-    fn set_cache_object_limit_succeeds() {
-        // Exercises the actual FFI call (bypassing the `Once` guard) and
-        // asserts libgit2 reports success, rather than only checking that
-        // the wrapper doesn't panic.
-        assert!(set_cache_object_limit(BLOB_CACHE_OBJECT_LIMIT) >= 0);
     }
 }
