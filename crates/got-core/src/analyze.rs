@@ -19,7 +19,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use anyhow::{anyhow, Context, Result};
@@ -317,6 +317,34 @@ fn merge_curve_maps(
 pub fn analyze_in_memory(options: &AnalyzeOptions) -> Result<AnalyzeResult> {
     let pool = build_thread_pool(options.procs)?;
     analyze_in_memory_with_pool(options, &pool)
+}
+
+/// Currently applied value of `libgit2`'s strict hash verification setting,
+/// which is global, process-wide state. The mutex serializes the setter and
+/// lets every top-level invocation restore the value it asks for.
+static STRICT_HASH_VERIFICATION: Mutex<bool> = Mutex::new(true);
+
+/// Enables or disables `libgit2`'s SHA-1 verification of object contents on
+/// every read.
+///
+/// Disabling verification measurably speeds up `blame_file()` (roughly 20%
+/// in profiling) at the cost of no longer detecting object corruption on
+/// read, so it should only be used on repositories whose integrity is
+/// trusted. Verification is on by default.
+///
+/// This is global, process-wide `libgit2` state, not per-repository or
+/// per-thread, so call it from a top-level invocation before any analysis
+/// starts, and never from inside a worker thread. Callers that disable
+/// verification for one analysis should call this again with `true`
+/// afterwards so the choice does not leak into later analyses.
+pub fn set_strict_hash_verification(enabled: bool) {
+    let mut current = STRICT_HASH_VERIFICATION
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if *current != enabled {
+        git2::opts::strict_hash_verification(enabled);
+        *current = enabled;
+    }
 }
 
 /// Same as [`analyze_in_memory`], but reuses a caller-provided thread pool
