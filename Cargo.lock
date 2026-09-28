@@ -672,6 +672,7 @@ dependencies = [
  "git2",
  "globset",
  "indicatif",
+ "libgit2-sys",
  "rayon",
  "serde",
  "serde_json",
