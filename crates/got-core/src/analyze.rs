@@ -824,6 +824,10 @@ fn resolve_branch(repo: &Repository, branch: &str) -> Result<Oid> {
 }
 
 fn build_thread_pool(procs: usize) -> Result<rayon::ThreadPool> {
+    // Must run before any worker thread that touches libgit2 is spawned,
+    // since it mutates process-global libgit2 state.
+    crate::libgit2_opts::configure_blob_object_cache();
+
     let n = if procs == 0 { 1 } else { procs };
     rayon::ThreadPoolBuilder::new()
         .num_threads(n)
