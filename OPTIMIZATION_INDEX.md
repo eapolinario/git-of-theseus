@@ -78,7 +78,7 @@ Complete guide to understanding and optimizing the I/O-bound `git-of-theseus-ana
 - Blame result caching (already implemented!) ✅
 
 **TIER 3 - Major Changes (significant code):**
-- Batch blame operations → 10–50x faster
+- ~~Batch blame operations~~ → disproven, no speedup (see [#42](https://github.com/eapolinario/git-of-theseus/issues/42))
 - Intelligent commit sampling → 5–20x faster
 - Incremental analysis → 100x+ for reruns
 
@@ -166,13 +166,12 @@ Parallelism tuning   1.1–1.5x  (use --procs 32)
 COMBINED:            2.5–6x speedup
 ```
 
-### With Phase 2 Code Changes (12 hours)
+### With Phase 2 Code Changes (4–6 hours)
 ```
 Prefetch/pipeline    2–5x      (4–6 hours implementation)
-Batch blame ops      10–50x    (8–12 hours implementation)
-──────────────────────────────
-COMBINED:            20–250x speedup
 ```
+Batch blame ops were previously listed here at 10–50x; that was disproven in
+[#42](https://github.com/eapolinario/git-of-theseus/issues/42) (libgit2 has no batch object read, and prefetching measured no gain).
 
 ### With Phase 3 Refactoring (16 hours)
 ```
@@ -228,7 +227,6 @@ START
   │
   ├─ Willing to code?
   │  ├─ YES, 4–6 hours → Implement prefetch/pipeline (2–5x)
-  │  ├─ YES, 8–12 hours → Implement batch blame (10–50x)
   │  └─ NO → Use Phase 1 optimizations only
   │
   └─ Long-term project?
@@ -281,7 +279,6 @@ git-of-theseus-analyze \
 
 ### What WILL Help
 ✅ Reducing number of commits (--interval)
-✅ Batching I/O operations
 ✅ Using local/SSD storage
 ✅ Caching blame results
 ✅ Pipelining blame with fast-diff
@@ -291,6 +288,7 @@ git-of-theseus-analyze \
 ❌ Optimizing histogram aggregation (only 0.4% of time)
 ❌ Using SIMD (computation is negligible)
 ❌ Parallelizing fast-diff (already fast)
+❌ Batching blame object reads (no libgit2 batch API; measured no gain — [#42](https://github.com/eapolinario/git-of-theseus/issues/42))
 
 ### Critical Insight
 Blame operations (`repo.blame_file()`) are **I/O-bound** because they:
