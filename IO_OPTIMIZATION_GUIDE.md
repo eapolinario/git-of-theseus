@@ -55,10 +55,11 @@ tree-to-tree diffs during blame, or to add an internal/public diff option for a
 caller-supplied config snapshot when the caller can guarantee repository config
 immutability for the operation.
 
-Benchmark note: before merging a libgit2 or binding-level fix, benchmark
-`git-of-theseus-analyze --quiet --measure-time` against a local checkout of
-`https://github.com/eapolinario/flyte` and compare every emitted JSON file
-byte-for-byte against the baseline.
+Benchmark both baseline and candidate with:
+`git-of-theseus-analyze --quiet --measure-time --outdir /tmp/flyte-baseline /path/to/flyte`
+and
+`git-of-theseus-analyze --quiet --measure-time --outdir /tmp/flyte-fixed /path/to/flyte`,
+then compare every emitted JSON file byte-for-byte.
 
 ---
 
