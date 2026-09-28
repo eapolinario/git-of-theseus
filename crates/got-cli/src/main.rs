@@ -10,7 +10,7 @@ use std::process::Command;
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
-use got_core::{analyze_many, AnalyzeOptions, DEFAULT_INTERVAL_SECS};
+use got_core::{analyze_many, set_strict_hash_verification, AnalyzeOptions, DEFAULT_INTERVAL_SECS};
 
 /// Analyze a git repository's history and emit JSON time-series files.
 #[derive(Debug, Parser)]
@@ -102,6 +102,11 @@ fn main() -> Result<()> {
     if cli.opt {
         write_commit_graphs(&cli.repo_dir)?;
     }
+    // Process-global libgit2 state: applied here, before any analysis (and
+    // therefore any worker thread) starts.
+    if cli.skip_hash_verification {
+        set_strict_hash_verification(false);
+    }
     let options = AnalyzeOptions {
         repo_dir: PathBuf::new(), // overridden per-repository by analyze_many
         branch: cli.branch,
@@ -117,7 +122,6 @@ fn main() -> Result<()> {
         merge: cli.merge,
         measure_time: cli.measure_time,
         timing: Default::default(),
-        skip_hash_verification: cli.skip_hash_verification,
     };
     analyze_many(&cli.repo_dir, &options)?;
 

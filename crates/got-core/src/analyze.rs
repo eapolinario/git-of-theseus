@@ -73,14 +73,6 @@ pub struct AnalyzeOptions {
     pub measure_time: bool,
     /// Timing statistics (only populated if measure_time is true).
     pub timing: TimingStats,
-    /// Skip libgit2's SHA-1 verification of object contents on every read.
-    ///
-    /// This is a **global**, process-wide `libgit2` setting (applied on each
-    /// top-level invocation, before the rayon thread pool starts) that
-    /// measurably speeds up `blame_file()` (roughly 20% in profiling) at the
-    /// cost of no longer detecting object corruption on read. Off by default;
-    /// only enable this if you trust the repository's integrity.
-    pub skip_hash_verification: bool,
 }
 
 impl Default for AnalyzeOptions {
@@ -100,7 +92,6 @@ impl Default for AnalyzeOptions {
             merge: false,
             measure_time: false,
             timing: TimingStats::default(),
-            skip_hash_verification: false,
         }
     }
 }
@@ -171,8 +162,6 @@ pub fn analyze_many(repo_dirs: &[PathBuf], options: &AnalyzeOptions) -> Result<V
         opts.repo_dir = repo_dirs[0].clone();
         return Ok(vec![analyze(&opts)?]);
     }
-
-    apply_global_libgit2_options(options);
 
     // Built once and shared across every repository below, instead of each
     // repository spawning (and tearing down) its own worker threads.
@@ -326,7 +315,6 @@ fn merge_curve_maps(
 /// Runs the analysis but does not touch the filesystem. Useful for tests
 /// and embedding in WASM / library contexts.
 pub fn analyze_in_memory(options: &AnalyzeOptions) -> Result<AnalyzeResult> {
-    apply_global_libgit2_options(options);
     let pool = build_thread_pool(options.procs)?;
     analyze_in_memory_with_pool(options, &pool)
 }
@@ -336,22 +324,26 @@ pub fn analyze_in_memory(options: &AnalyzeOptions) -> Result<AnalyzeResult> {
 /// lets every top-level invocation restore the value it asks for.
 static STRICT_HASH_VERIFICATION: Mutex<bool> = Mutex::new(true);
 
-/// Applies process-global `libgit2` options derived from `options`.
+/// Enables or disables `libgit2`'s SHA-1 verification of object contents on
+/// every read.
 ///
-/// This runs on every top-level invocation, before the rayon thread pool
-/// starts (and never from inside a worker thread), since these settings are
-/// global, process-wide `libgit2` state, not per-repository or per-thread.
-/// The setting is restored to match `options`, so an analysis that opts out
-/// of hash verification does not leak that choice into later analyses that
-/// leave it enabled.
-fn apply_global_libgit2_options(options: &AnalyzeOptions) {
-    let desired = !options.skip_hash_verification;
+/// Disabling verification measurably speeds up `blame_file()` (roughly 20%
+/// in profiling) at the cost of no longer detecting object corruption on
+/// read, so it should only be used on repositories whose integrity is
+/// trusted. Verification is on by default.
+///
+/// This is global, process-wide `libgit2` state, not per-repository or
+/// per-thread, so call it from a top-level invocation before any analysis
+/// starts, and never from inside a worker thread. Callers that disable
+/// verification for one analysis should call this again with `true`
+/// afterwards so the choice does not leak into later analyses.
+pub fn set_strict_hash_verification(enabled: bool) {
     let mut current = STRICT_HASH_VERIFICATION
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if *current != desired {
-        git2::opts::strict_hash_verification(desired);
-        *current = desired;
+    if *current != enabled {
+        git2::opts::strict_hash_verification(enabled);
+        *current = enabled;
     }
 }
 
