@@ -19,7 +19,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use anyhow::{anyhow, Context, Result};
@@ -75,11 +75,11 @@ pub struct AnalyzeOptions {
     pub timing: TimingStats,
     /// Skip libgit2's SHA-1 verification of object contents on every read.
     ///
-    /// This is a **global**, process-wide `libgit2` setting (set once,
-    /// before the rayon thread pool starts) that measurably speeds up
-    /// `blame_file()` (roughly 20% in profiling) at the cost of no longer
-    /// detecting object corruption on read. Off by default; only enable
-    /// this if you trust the repository's integrity.
+    /// This is a **global**, process-wide `libgit2` setting (applied on each
+    /// top-level invocation, before the rayon thread pool starts) that
+    /// measurably speeds up `blame_file()` (roughly 20% in profiling) at the
+    /// cost of no longer detecting object corruption on read. Off by default;
+    /// only enable this if you trust the repository's integrity.
     pub skip_hash_verification: bool,
 }
 
@@ -331,14 +331,27 @@ pub fn analyze_in_memory(options: &AnalyzeOptions) -> Result<AnalyzeResult> {
     analyze_in_memory_with_pool(options, &pool)
 }
 
+/// Currently applied value of `libgit2`'s strict hash verification setting,
+/// which is global, process-wide state. The mutex serializes the setter and
+/// lets every top-level invocation restore the value it asks for.
+static STRICT_HASH_VERIFICATION: Mutex<bool> = Mutex::new(true);
+
 /// Applies process-global `libgit2` options derived from `options`.
 ///
-/// This must run once per process before the rayon thread pool starts (and
-/// never from inside a worker thread), since these settings are global,
-/// process-wide `libgit2` state, not per-repository or per-thread.
+/// This runs on every top-level invocation, before the rayon thread pool
+/// starts (and never from inside a worker thread), since these settings are
+/// global, process-wide `libgit2` state, not per-repository or per-thread.
+/// The setting is restored to match `options`, so an analysis that opts out
+/// of hash verification does not leak that choice into later analyses that
+/// leave it enabled.
 fn apply_global_libgit2_options(options: &AnalyzeOptions) {
-    if options.skip_hash_verification {
-        git2::opts::strict_hash_verification(false);
+    let desired = !options.skip_hash_verification;
+    let mut current = STRICT_HASH_VERIFICATION
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if *current != desired {
+        git2::opts::strict_hash_verification(desired);
+        *current = desired;
     }
 }
 

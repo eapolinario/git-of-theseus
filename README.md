@@ -127,7 +127,7 @@ Blame dominates analysis time, and roughly 16% of that is spent on `libgit2` ver
 git-of-theseus-analyze --skip-hash-verification <path-to-repo> --outdir <output-dir>
 ```
 
-This is a global, process-wide `libgit2` setting applied once before analysis starts (never per worker thread), so it is off by default: only enable it if you trust the repository's integrity (e.g. a freshly cloned/verified repo). Output is byte-identical with and without the flag (verified against the local test fixtures and against [flyte](https://github.com/eapolinario/flyte)). Benchmarked with `--measure-time` on [eapolinario/flyte](https://github.com/eapolinario/flyte) (~4,900 commits, ~15,300 blamed files): blame time dropped from 4135.1s to 2712.4s of cumulative worker time (~34% reduction), and wall-clock `analyze` time dropped from 20m17s to 13m6s.
+This is a global, process-wide `libgit2` setting applied (and restored to match the requested value) at the start of each analysis, never per worker thread, so it is off by default: only enable it if you trust the repository's integrity (e.g. a freshly cloned/verified repo). Output is byte-identical with and without the flag (verified against the local test fixtures and against [flyte](https://github.com/eapolinario/flyte)). Benchmarked with `--measure-time` on [eapolinario/flyte](https://github.com/eapolinario/flyte) (~4,900 commits, ~15,300 blamed files): blame time dropped from 4135.1s to 2712.4s of cumulative worker time (~34% reduction), and wall-clock `analyze` time dropped from 20m17s to 13m6s.
 
 ### Analyzing multiple repositories
 
