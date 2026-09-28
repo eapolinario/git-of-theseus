@@ -17,6 +17,52 @@ Since 99.6% of execution time is spent on `repo.blame_file()` I/O operations, th
 
 ---
 
+## Follow-up: libgit2 Per-Diff Setup Overhead
+
+A `perf` profile of `blame_file()` showed roughly 20-25% of blame time in
+libgit2's per-diff setup: about 13% copying/freeing a config snapshot and
+about 9-10% checking file stamps. This overhead is currently not avoidable
+from git-of-theseus without changing libgit2 or the `git2` bindings.
+This was verified on 2026-09-27 against the workspace-pinned `git2` 0.19 /
+libgit2 1.8.1; re-check the currently pinned crate sources before revisiting
+this conclusion.
+
+Findings:
+
+- `git2` 0.19 exposes `Config::snapshot()`, but
+  `Repository::blame_file()` only passes a repository, path, and
+  `BlameOptions` to libgit2's `git_blame_file()`. There is no public
+  `BlameOptions` or repository API that lets callers provide a prebuilt config
+  snapshot for blame's internal diffs.
+- libgit2 1.8.1's blame implementation calls `git_diff_tree_to_tree()` for
+  each parent comparison. Diff construction then calls
+  `git_repository_config_snapshot()` to read diff-affecting settings such as
+  symlink support, ignore-stat, filemode, trust-ctime, and submodule ignore
+  behavior. Passing explicit diff options does not skip that snapshot.
+- The observed file-stamp checks are part of libgit2's cached config,
+  attribute, index, and packed-ref backends (for example config files,
+  `.gitattributes`, the index, and `packed-refs`). These checks are designed to
+  keep repository state coherent; `git2` does not expose an option to disable
+  them for blame-only tree diffs.
+- Replacing the repository config with a prebuilt snapshot would require unsafe
+  direct use of libgit2's system API and would still leave libgit2 taking a new
+  snapshot per generated diff. That is not a surgical or reliable optimization
+  for this crate.
+
+Recommendation: treat this as an upstream libgit2 optimization. A useful
+upstream proposal would be to cache immutable diff capability/config state for
+tree-to-tree diffs during blame, or to add an internal/public diff option for a
+caller-supplied config snapshot when the caller can guarantee repository config
+immutability for the operation.
+
+Benchmark both baseline and candidate with:
+`git-of-theseus-analyze --quiet --measure-time --outdir /tmp/flyte-baseline /path/to/flyte`
+and
+`git-of-theseus-analyze --quiet --measure-time --outdir /tmp/flyte-fixed /path/to/flyte`,
+then compare every emitted JSON file byte-for-byte.
+
+---
+
 ## TIER 1: Quick Wins (No Code Changes Needed)
 
 ### 1.1 Reduce Sampled Commits (2–10x Speedup)
