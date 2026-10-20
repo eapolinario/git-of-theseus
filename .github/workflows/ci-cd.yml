@@ -133,3 +133,40 @@ jobs:
           ./target/release/git-of-theseus-stack-plot got-rs/cohorts.json --events examples/events.yaml --outfile got-rs/cohorts-events.png
           ./target/release/git-of-theseus-line-plot got-rs/authors.json --events examples/events.yaml --outfile got-rs/authors-events.svg
           ./target/release/git-of-theseus-survival-plot got-rs/survival.json --exp-fit --outfile got-rs/survival.png
+
+  build-windows:
+    runs-on: windows-latest
+    name: Build Windows binaries
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache cargo registry / build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Windows release binaries
+        run: cargo build --locked --release --target x86_64-pc-windows-msvc -p got-cli
+
+      - name: Smoke-test Windows binaries
+        shell: pwsh
+        run: |
+          foreach ($cli in "analyze", "line-plot", "stack-plot", "survival-plot") {
+            & "./target/x86_64-pc-windows-msvc/release/git-of-theseus-$cli.exe" --help
+            if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+            }
+          }
+
+      - name: Upload Windows binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86_64-binaries
+          path: target/x86_64-pc-windows-msvc/release/*.exe
+          if-no-files-found: error
