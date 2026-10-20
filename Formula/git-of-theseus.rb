@@ -3,18 +3,18 @@
 class GitOfTheseus < Formula
   desc "Analyze the evolution of a Git repository's code over time"
   homepage "https://github.com/eapolinario/git-of-theseus"
-  version "0.5.1"
+  version "0.5.2"
   license "Apache-2.0"
 
   on_macos do
     on_arm do
-      url "https://github.com/eapolinario/git-of-theseus/releases/download/v0.5.1/git-of-theseus-v0.5.1-aarch64-apple-darwin.tar.gz"
-      sha256 "7d95db2ff0987a3e28ca70b24fab86d8c7ce087b187ad6b19ff3d3fec65d58dc"
+      url "https://github.com/eapolinario/git-of-theseus/releases/download/v0.5.2/git-of-theseus-v0.5.2-aarch64-apple-darwin.tar.gz"
+      sha256 "de023c578b9549ecf274cbefd3d48a6d81b6b960b7c483347d82b2b7c884e960"
     end
 
     on_intel do
-      url "https://github.com/eapolinario/git-of-theseus/releases/download/v0.5.1/git-of-theseus-v0.5.1-x86_64-apple-darwin.tar.gz"
-      sha256 "8235b311674746bcfac128c16b442479d495c42b81718d0485cb721cfcbeba2a"
+      url "https://github.com/eapolinario/git-of-theseus/releases/download/v0.5.2/git-of-theseus-v0.5.2-x86_64-apple-darwin.tar.gz"
+      sha256 "8defa0a578e48a02db97f23ce67cf2b67315e05305921c59128b2d072f2f3afa"
     end
   end
 
