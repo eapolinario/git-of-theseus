@@ -20,6 +20,7 @@ pub mod output;
 pub mod path_filter;
 
 pub use analyze::{
-    analyze, analyze_in_memory, analyze_many, merge_results, write_outputs, AnalyzeOptions,
-    AnalyzeResult, SurvivalSeries, TimingStats, DEFAULT_INTERVAL_SECS,
+    analyze, analyze_in_memory, analyze_many, merge_results, set_strict_hash_verification,
+    write_outputs, AnalyzeOptions, AnalyzeResult, SurvivalSeries, TimingStats,
+    DEFAULT_INTERVAL_SECS,
 };

@@ -162,3 +162,55 @@ fn opt_writes_a_commit_graph() {
     );
     assert!(repo.join(".git/objects/info/commit-graph").exists());
 }
+
+#[test]
+fn skip_hash_verification_produces_byte_identical_output() {
+    let dir = make_repository();
+    let repo = dir.path();
+
+    let run = |outdir: &std::path::Path, extra_args: &[&str]| {
+        let mut cmd = Command::new(ANALYZE);
+        cmd.args(["--quiet", "--branch", "main"])
+            .args(extra_args)
+            .arg("--outdir")
+            .arg(outdir)
+            .arg(repo);
+        let result = cmd.output().unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    };
+
+    let default_out = dir.path().join("out-default");
+    run(&default_out, &[]);
+
+    let skip_out = dir.path().join("out-skip");
+    run(&skip_out, &["--skip-hash-verification"]);
+
+    for name in [
+        "cohorts.json",
+        "authors.json",
+        "exts.json",
+        "dirs.json",
+        "domains.json",
+        "survival.json",
+    ] {
+        let default_bytes = fs::read(default_out.join(name)).unwrap();
+        let skip_bytes = fs::read(skip_out.join(name)).unwrap();
+        assert_eq!(
+            default_bytes, skip_bytes,
+            "{name} differs with --skip-hash-verification"
+        );
+    }
+}
+
+#[test]
+fn help_documents_skip_hash_verification_tradeoff() {
+    let result = Command::new(ANALYZE).arg("--help").output().unwrap();
+    assert!(result.status.success());
+    let help = String::from_utf8_lossy(&result.stdout);
+    assert!(help.contains("--skip-hash-verification"));
+    assert!(help.contains("corruption"));
+}
